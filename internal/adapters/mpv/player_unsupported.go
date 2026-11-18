@@ -1,0 +1,21 @@
+//go:build !windows
+
+package mpv
+
+import "errors"
+
+// Player is a build-time placeholder for non-Windows targets.
+type Player struct{}
+
+func New(uintptr, string) (*Player, error) {
+	return nil, errors.New("the bundled libmpv adapter is currently Windows-only")
+}
+func (*Player) Load(string) error                 { return errors.New("Windows only") }
+func (*Player) Append(string) error               { return errors.New("Windows only") }
+func (*Player) PlayIndex(int) error               { return errors.New("Windows only") }
+func (*Player) GetDouble(string) (float64, error) { return 0, errors.New("Windows only") }
+func (*Player) SetPaused(bool) error              { return errors.New("Windows only") }
+func (*Player) Seek(float64) error                { return errors.New("Windows only") }
+func (*Player) SetVolume(float64) error           { return errors.New("Windows only") }
+func (*Player) Stop() error                       { return errors.New("Windows only") }
+func (*Player) Close()                            {}

@@ -42,7 +42,7 @@ func (a *App) chooseSubtitleFile() {
 			}
 			a.persistSubtitleAssignment(paths[0], application.SubtitleLanguageFromFilename(a.path, paths[0]), false)
 			a.status = "Subtitle loaded: " + filepath.Base(paths[0])
-			a.subtitleMenuOpen = false
+			a.closeSubtitleFlyout()
 			a.fullscreenSubtitleMenuOpen = false
 			a.win.Invalidate()
 		})
@@ -347,6 +347,90 @@ func subtitleColorFromMPV(value string) ui.Color {
 	var r, g, b uint8
 	if _, err := fmt.Sscanf(value, "%02X%02X%02X", &r, &g, &b); err != nil { return ui.Hex("#FFFFFF") }
 	return ui.Color{R: r, G: g, B: b, A: 255}
+}
+
+func (a *App) closeSubtitleFlyout() {
+	flyout := a.subtitleFlyout
+	a.subtitleFlyout = nil
+	a.subtitleFlyoutAnchor = mygo.Rectangle{}
+	a.subtitleMenuOpen = false
+	if flyout != nil && !flyout.IsDestroyed() {
+		flyout.Close()
+	}
+}
+
+func (a *App) subtitleStudioFlyoutButton(c *ui.Context) {
+	button := auroraQuietButton(c, "CC Subtitles").
+		Tooltip("Subtitle settings").
+		Bind(&a.subtitleButtonHandle)
+
+	if button.Clicked() {
+		if a.subtitleFlyout != nil && !a.subtitleFlyout.IsDestroyed() {
+			a.closeSubtitleFlyout()
+			return
+		}
+		a.subtitleMenuOpen = true
+	}
+
+	if !a.subtitleMenuOpen || a.win == nil || a.win.IsDestroyed() {
+		return
+	}
+
+	// Handle.Bounds reads the committed layout in window DIPs. Using the
+	// actual button rectangle keeps the native flyout attached through
+	// window resizes instead of guessing its toolbar position.
+	bounds := a.subtitleButtonHandle.Bounds(c)
+	if bounds.W <= 0 || bounds.H <= 0 {
+		return
+	}
+	anchor := mygo.Rectangle{
+		X:      int(bounds.X),
+		Y:      int(bounds.Y),
+		Width:  max(1, int(bounds.W+0.5)),
+		Height: max(1, int(bounds.H+0.5)),
+	}
+
+	if a.subtitleFlyout != nil && !a.subtitleFlyout.IsDestroyed() {
+		if anchor != a.subtitleFlyoutAnchor {
+			a.subtitleFlyout.SetAnchor(anchor)
+			a.subtitleFlyoutAnchor = anchor
+		}
+		return
+	}
+
+	flyout := mygo.NewFlyout(mygo.FlyoutOptions{
+		Parent:    a.win,
+		Anchor:    anchor,
+		Placement: mygo.PlacementTopEnd,
+		Gap:       8,
+		Width:     440,
+		Height:    620,
+		Focusable: true,
+		Hidden:    true,
+		Shadow:    true,
+		Content:   ui.View(a.subtitleStudioFlyoutView),
+	})
+	a.subtitleFlyout = flyout
+	a.subtitleFlyoutAnchor = anchor
+	flyout.OnClosed(func() {
+		if a.subtitleFlyout == flyout {
+			a.subtitleFlyout = nil
+			a.subtitleFlyoutAnchor = mygo.Rectangle{}
+			a.subtitleMenuOpen = false
+		}
+	})
+	flyout.Show()
+}
+
+func (a *App) subtitleStudioFlyoutView(c *ui.Context) {
+	applyAuroraTheme(c)
+	c.Root().Background(ui.Hex(auroraPanel))
+	ui.Column(c).Fill().Background(ui.Hex(auroraPanel)).Radius(13).
+		Border(1, ui.Hex(auroraBorder)).Clip().Children(func() {
+		ui.Scroll(c).Fill().Children(func() {
+			a.subtitleStudioControls(c)
+		})
+	})
 }
 
 func (a *App) subtitleStudioPopover(c *ui.Context, label string, open *bool) {

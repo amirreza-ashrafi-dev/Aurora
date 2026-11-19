@@ -15,7 +15,7 @@ func TestJSONRepositoryPersistsPreferencesAndAssignments(t *testing.T) {
 		Global: domain.DefaultSubtitleStyle(),
 		Languages: []domain.SubtitleLanguageProfile{{Language: "fa", Style: domain.SubtitleStyle{FontFamily: "Tahoma", FontSize: 42, TextColor: "#FFFFFFFF", OutlineColor: "#FF000000", OutlineSize: 2, VerticalPosition: 95}}},
 	}
-	if err := repo.Save(prefs); err != nil { t.Fatal(err) }
+	if err := repo.SavePreferences(prefs); err != nil { t.Fatal(err) }
 	loadedPrefs, err := repo.Load()
 	if err != nil { t.Fatal(err) }
 	if len(loadedPrefs.Languages) != 1 || loadedPrefs.Languages[0].Style.FontFamily != "Tahoma" {
@@ -24,7 +24,7 @@ func TestJSONRepositoryPersistsPreferencesAndAssignments(t *testing.T) {
 
 	video := filepath.Join(t.TempDir(), "Movie.mkv")
 	subtitle := filepath.Join(t.TempDir(), "Movie.fa.srt")
-	if err := repo.Save(domain.SubtitleAssignment{MediaPath: video, ExternalPath: subtitle, Language: "fa"}); err != nil { t.Fatal(err) }
+	if err := repo.SaveAssignment(domain.SubtitleAssignment{MediaPath: video, ExternalPath: subtitle, Language: "fa"}); err != nil { t.Fatal(err) }
 	assignments, err := repo.LoadAll()
 	if err != nil { t.Fatal(err) }
 	if len(assignments) != 1 || assignments[0].ExternalPath != subtitle {

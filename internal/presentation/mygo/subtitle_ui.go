@@ -162,15 +162,23 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 				}
 			}
 		}
-		textColor := ui.Hex("#FFFFFF")
-		if auroraQuietButton(c, "Text color").Clicked() { a.colorPickerOpen = !a.colorPickerOpen }
-		if a.colorPickerOpen {
-			ui.ColorWell(c, &textColor)
-			if textColor != ui.Hex("#FFFFFF") {
-				style := a.subtitleStyle
-				style.TextColor = fmt.Sprintf("#FF%02X%02X%02X", textColor.R, textColor.G, textColor.B)
-				a.applySubtitleStyle(style)
-			}
+		textColor := subtitleColorFromMPV(a.subtitleStyle.TextColor)
+		previousTextColor := textColor
+		ui.Text(c, "TEXT COLOR").FontSize(8).TextColor(ui.Hex(auroraMuted))
+		ui.ColorWell(c, &textColor)
+		if textColor != previousTextColor {
+			style := a.subtitleStyle
+			style.TextColor = fmt.Sprintf("#FF%02X%02X%02X", textColor.R, textColor.G, textColor.B)
+			a.applySubtitleStyle(style)
+		}
+		outlineColor := subtitleColorFromMPV(a.subtitleStyle.OutlineColor)
+		previousOutlineColor := outlineColor
+		ui.Text(c, "OUTLINE COLOR").FontSize(8).TextColor(ui.Hex(auroraMuted))
+		ui.ColorWell(c, &outlineColor)
+		if outlineColor != previousOutlineColor {
+			style := a.subtitleStyle
+			style.OutlineColor = fmt.Sprintf("#FF%02X%02X%02X", outlineColor.R, outlineColor.G, outlineColor.B)
+			a.applySubtitleStyle(style)
 		}
 		ui.Text(c, "ASS/SSA and image-based subtitles may not support every appearance setting.").FontSize(8).TextColor(ui.Hex(auroraMuted))
 	})
@@ -250,4 +258,13 @@ func subtitlePathKey(path string) string {
 	abs, err := filepath.Abs(path)
 	if err == nil { path = abs }
 	return strings.ToLower(filepath.Clean(path))
+}
+
+func subtitleColorFromMPV(value string) ui.Color {
+	value = strings.TrimPrefix(strings.TrimSpace(value), "#")
+	if len(value) == 8 { value = value[2:] } // discard MPV alpha for the UI swatch
+	if len(value) != 6 { return ui.Hex("#FFFFFF") }
+	var r, g, b uint8
+	if _, err := fmt.Sscanf(value, "%02X%02X%02X", &r, &g, &b); err != nil { return ui.Hex("#FFFFFF") }
+	return ui.Color{R: r, G: g, B: b, A: 255}
 }

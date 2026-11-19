@@ -35,6 +35,10 @@ type App struct {
 	subtitleFlyout *mygo.Window
 	subtitleButtonHandle ui.Handle
 	subtitleFlyoutAnchor mygo.Rectangle
+
+	fullscreenSubtitleFlyout *mygo.Window
+	fullscreenSubtitleButtonHandle ui.Handle
+	fullscreenSubtitleFlyoutAnchor mygo.Rectangle
 	colorPickerOpen bool
 	activeSubtitleLanguage string
 	history        application.ProgressRepository

@@ -266,6 +266,10 @@ func (p *Player) LoadExternalSubtitle(path string) error {
 }
 
 // DisableSubtitles disables the active subtitle track without removing tracks.
+func (p *Player) CycleSubtitleTrack() error { return p.commandArgs("cycle", "sid") }
+
+func (p *Player) RemoveExternalSubtitle(id int64) error { return p.commandArgs("sub-remove", strconv.FormatInt(id, 10)) }
+
 func (p *Player) DisableSubtitles() error {
 	return p.setSubtitleProperty("sid", "no")
 }

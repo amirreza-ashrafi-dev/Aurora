@@ -55,6 +55,19 @@ type Platform struct {
 	monitorFromWindow    func(uintptr, uint32) uintptr
 	getMonitorInfoW      func(uintptr, *monitorInfo) int32
 	getDpiForWindow      func(uintptr) uint32
+	clientToScreen      func(uintptr, *domain.Point) int32
+	setWindowsHookEx    func(int32, uintptr, uintptr, uint32) uintptr
+	unhookWindowsHookEx func(uintptr) int32
+	callNextHookEx      func(uintptr, int32, uintptr, uintptr) uintptr
+
+	mouseHook     uintptr
+	mouseHookProc uintptr
+	mouseHookFunc func(int32, uintptr, uintptr) uintptr
+
+	outsidePopup       uintptr
+	outsideAnchorWindow uintptr
+	outsideAnchor      domain.Rect
+	onOutsideClick     func()
 }
 
 // New loads the Win32 and common-controls APIs through purego.
@@ -90,6 +103,10 @@ func New() (*Platform, error) {
 	purego.RegisterLibFunc(&p.monitorFromWindow, h, "MonitorFromWindow")
 	purego.RegisterLibFunc(&p.getMonitorInfoW, h, "GetMonitorInfoW")
 	purego.RegisterLibFunc(&p.getDpiForWindow, h, "GetDpiForWindow")
+	purego.RegisterLibFunc(&p.clientToScreen, h, "ClientToScreen")
+	purego.RegisterLibFunc(&p.setWindowsHookEx, h, "SetWindowsHookExW")
+	purego.RegisterLibFunc(&p.unhookWindowsHookEx, h, "UnhookWindowsHookEx")
+	purego.RegisterLibFunc(&p.callNextHookEx, h, "CallNextHookEx")
 	return p, nil
 }
 
@@ -129,6 +146,130 @@ func (p *Platform) InstallVideoDoubleClick(hwnd uintptr, onDoubleClick func()) e
 	}
 	p.videoProc = callback
 	return nil
+}
+
+const (
+	whMouseLL        = 14
+	wmLButtonDown    = 0x0201
+	wmRButtonDown    = 0x0204
+	wmMButtonDown    = 0x0207
+	wmXButtonDown    = 0x020B
+)
+
+// mouseHookInfo is MSLLHOOKSTRUCT as Win32 lays it out on 64-bit Windows.
+type mouseHookInfo struct {
+	Point     domain.Point
+	MouseData uint32
+	Flags     uint32
+	Time      uint32
+	ExtraInfo uintptr
+}
+
+// WatchOutsideClickDismiss dismisses an open native popup when a mouse button
+// is pressed outside both the popup and its CC anchor button. The low-level
+// hook also sees clicks delivered to MPV's child HWND, which are invisible
+// to MyGo's parent-window UI event handlers.
+func (p *Platform) WatchOutsideClickDismiss(popupHWND, anchorWindow uintptr, anchor domain.Rect, onOutside func()) error {
+	if p == nil || popupHWND == 0 || anchorWindow == 0 || onOutside == nil {
+		return fmt.Errorf("outside-click dismissal requires a popup, anchor window, and callback")
+	}
+	p.StopOutsideClickDismiss()
+	p.outsidePopup = popupHWND
+	p.outsideAnchorWindow = anchorWindow
+	p.outsideAnchor = anchor
+	p.onOutsideClick = onOutside
+	p.mouseHookFunc = func(code int32, message uintptr, data uintptr) uintptr {
+		if code >= 0 && data != 0 && isMouseButtonDown(message) {
+			click := (*mouseHookInfo)(unsafe.Pointer(data)).Point
+			if !p.pointInWindow(click, p.outsidePopup) && !p.pointInAnchor(click) {
+				callback := p.onOutsideClick
+				if callback != nil {
+					callback()
+				}
+			}
+		}
+		if p.callNextHookEx != nil {
+			return p.callNextHookEx(0, code, message, data)
+		}
+		return 0
+	}
+	p.mouseHookProc = purego.NewCallback(p.mouseHookFunc)
+	p.mouseHook = p.setWindowsHookEx(whMouseLL, p.mouseHookProc, 0, 0)
+	if p.mouseHook == 0 {
+		p.onOutsideClick = nil
+		p.mouseHookFunc = nil
+		p.mouseHookProc = 0
+		p.outsidePopup = 0
+		p.outsideAnchorWindow = 0
+		return fmt.Errorf("SetWindowsHookExW(WH_MOUSE_LL) failed")
+	}
+	return nil
+}
+
+// UpdateOutsideClickDismissAnchor follows the CC button if the controller
+// layout changes while the popup remains open.
+func (p *Platform) UpdateOutsideClickDismissAnchor(anchorWindow uintptr, anchor domain.Rect) {
+	if p == nil || p.mouseHook == 0 || anchorWindow == 0 {
+		return
+	}
+	p.outsideAnchorWindow = anchorWindow
+	p.outsideAnchor = anchor
+}
+
+func (p *Platform) StopOutsideClickDismiss() {
+	if p == nil {
+		return
+	}
+	if p.mouseHook != 0 && p.unhookWindowsHookEx != nil {
+		p.unhookWindowsHookEx(p.mouseHook)
+	}
+	p.mouseHook = 0
+	p.mouseHookProc = 0
+	p.mouseHookFunc = nil
+	p.onOutsideClick = nil
+	p.outsidePopup = 0
+	p.outsideAnchorWindow = 0
+	p.outsideAnchor = domain.Rect{}
+}
+
+func isMouseButtonDown(message uintptr) bool {
+	switch message {
+	case wmLButtonDown, wmRButtonDown, wmMButtonDown, wmXButtonDown:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *Platform) pointInWindow(point domain.Point, hwnd uintptr) bool {
+	if hwnd == 0 {
+		return false
+	}
+	var bounds rect
+	if p.getWindowRect(hwnd, &bounds) == 0 {
+		return false
+	}
+	return point.X >= bounds.Left && point.Y >= bounds.Top &&
+		point.X < bounds.Right && point.Y < bounds.Bottom
+}
+
+func (p *Platform) pointInAnchor(point domain.Point) bool {
+	hwnd := p.outsideAnchorWindow
+	if hwnd == 0 {
+		return false
+	}
+	var origin domain.Point
+	if p.clientToScreen(hwnd, &origin) == 0 {
+		return false
+	}
+	dpi := p.WindowDPI(hwnd)
+	scale := float64(dpi) / 96.0
+	anchor := p.outsideAnchor
+	left := origin.X + int32(math.Round(float64(anchor.X)*scale))
+	top := origin.Y + int32(math.Round(float64(anchor.Y)*scale))
+	right := left + int32(math.Round(float64(anchor.W)*scale))
+	bottom := top + int32(math.Round(float64(anchor.H)*scale))
+	return point.X >= left && point.Y >= top && point.X < right && point.Y < bottom
 }
 
 func (p *Platform) LayoutVideo(parent, child uintptr, fullscreen bool, stage domain.Rect) error {
@@ -265,6 +406,7 @@ func (p *Platform) Close() {
 	if p == nil {
 		return
 	}
+	p.StopOutsideClickDismiss()
 	if p.comctl32 != 0 {
 		xwindows.FreeLibrary(p.comctl32)
 		p.comctl32 = 0

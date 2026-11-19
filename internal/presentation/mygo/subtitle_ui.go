@@ -43,7 +43,7 @@ func (a *App) chooseSubtitleFile() {
 			a.persistSubtitleAssignment(paths[0], application.SubtitleLanguageFromFilename(a.path, paths[0]), false)
 			a.status = "Subtitle loaded: " + filepath.Base(paths[0])
 			a.closeSubtitleFlyout()
-			a.fullscreenSubtitleMenuOpen = false
+			a.closeFullscreenSubtitleFlyout()
 			a.win.Invalidate()
 		})
 	}()
@@ -349,37 +349,74 @@ func subtitleColorFromMPV(value string) ui.Color {
 	return ui.Color{R: r, G: g, B: b, A: 255}
 }
 
-func (a *App) closeSubtitleFlyout() {
-	flyout := a.subtitleFlyout
-	a.subtitleFlyout = nil
-	a.subtitleFlyoutAnchor = mygo.Rectangle{}
-	a.subtitleMenuOpen = false
-	if flyout != nil && !flyout.IsDestroyed() {
-		flyout.Close()
+func closeSubtitleFlyoutWindow(flyout **mygo.Window, anchor *mygo.Rectangle, open *bool) {
+	current := *flyout
+	*flyout = nil
+	*anchor = mygo.Rectangle{}
+	*open = false
+	if current != nil && !current.IsDestroyed() {
+		current.Close()
 	}
 }
 
+func (a *App) closeSubtitleFlyout() {
+	closeSubtitleFlyoutWindow(&a.subtitleFlyout, &a.subtitleFlyoutAnchor, &a.subtitleMenuOpen)
+}
+
+func (a *App) closeFullscreenSubtitleFlyout() {
+	closeSubtitleFlyoutWindow(&a.fullscreenSubtitleFlyout, &a.fullscreenSubtitleFlyoutAnchor, &a.fullscreenSubtitleMenuOpen)
+}
+
 func (a *App) subtitleStudioFlyoutButton(c *ui.Context) {
+	a.subtitleStudioFlyoutButtonAt(
+		c,
+		a.win,
+		&a.subtitleFlyout,
+		&a.subtitleMenuOpen,
+		&a.subtitleButtonHandle,
+		&a.subtitleFlyoutAnchor,
+	)
+}
+
+func (a *App) fullscreenSubtitleStudioFlyoutButton(c *ui.Context) {
+	a.subtitleStudioFlyoutButtonAt(
+		c,
+		a.controller,
+		&a.fullscreenSubtitleFlyout,
+		&a.fullscreenSubtitleMenuOpen,
+		&a.fullscreenSubtitleButtonHandle,
+		&a.fullscreenSubtitleFlyoutAnchor,
+	)
+}
+
+func (a *App) subtitleStudioFlyoutButtonAt(
+	c *ui.Context,
+	parent *mygo.Window,
+	flyoutRef **mygo.Window,
+	open *bool,
+	buttonHandle *ui.Handle,
+	previousAnchor *mygo.Rectangle,
+) {
 	button := auroraQuietButton(c, "CC Subtitles").
 		Tooltip("Subtitle settings").
-		Bind(&a.subtitleButtonHandle)
+		Bind(buttonHandle)
 
 	if button.Clicked() {
-		if a.subtitleFlyout != nil && !a.subtitleFlyout.IsDestroyed() {
-			a.closeSubtitleFlyout()
+		if *flyoutRef != nil && !(*flyoutRef).IsDestroyed() {
+			closeSubtitleFlyoutWindow(flyoutRef, previousAnchor, open)
 			return
 		}
-		a.subtitleMenuOpen = true
+		*open = true
 	}
 
-	if !a.subtitleMenuOpen || a.win == nil || a.win.IsDestroyed() {
+	if !*open || parent == nil || parent.IsDestroyed() {
 		return
 	}
 
-	// Handle.Bounds reads the committed layout in window DIPs. Using the
-	// actual button rectangle keeps the native flyout attached through
-	// window resizes instead of guessing its toolbar position.
-	bounds := a.subtitleButtonHandle.Bounds(c)
+	// Anchor to the actual button in this window. MyGo places the native
+	// flyout within the display work area, flipping or shrinking it when
+	// there is not enough room above or beside the controller.
+	bounds := buttonHandle.Bounds(c)
 	if bounds.W <= 0 || bounds.H <= 0 {
 		return
 	}
@@ -390,16 +427,16 @@ func (a *App) subtitleStudioFlyoutButton(c *ui.Context) {
 		Height: max(1, int(bounds.H+0.5)),
 	}
 
-	if a.subtitleFlyout != nil && !a.subtitleFlyout.IsDestroyed() {
-		if anchor != a.subtitleFlyoutAnchor {
-			a.subtitleFlyout.SetAnchor(anchor)
-			a.subtitleFlyoutAnchor = anchor
+	if *flyoutRef != nil && !(*flyoutRef).IsDestroyed() {
+		if anchor != *previousAnchor {
+			(*flyoutRef).SetAnchor(anchor)
+			*previousAnchor = anchor
 		}
 		return
 	}
 
 	flyout := mygo.NewFlyout(mygo.FlyoutOptions{
-		Parent:    a.win,
+		Parent:    parent,
 		Anchor:    anchor,
 		Placement: mygo.PlacementTopEnd,
 		Gap:       8,
@@ -410,13 +447,13 @@ func (a *App) subtitleStudioFlyoutButton(c *ui.Context) {
 		Shadow:    true,
 		Content:   ui.View(a.subtitleStudioFlyoutView),
 	})
-	a.subtitleFlyout = flyout
-	a.subtitleFlyoutAnchor = anchor
+	*flyoutRef = flyout
+	*previousAnchor = anchor
 	flyout.OnClosed(func() {
-		if a.subtitleFlyout == flyout {
-			a.subtitleFlyout = nil
-			a.subtitleFlyoutAnchor = mygo.Rectangle{}
-			a.subtitleMenuOpen = false
+		if *flyoutRef == flyout {
+			*flyoutRef = nil
+			*previousAnchor = mygo.Rectangle{}
+			*open = false
 		}
 	})
 	flyout.Show()

@@ -223,6 +223,7 @@ func (a *App) restoreSubtitleForCurrent() {
 		matches, err := application.DiscoverSubtitleFiles(a.path)
 		if err != nil { return }
 		a.subtitleCandidates = matches
+		if len(matches) > 1 { a.subtitleMenuOpen = true; a.status = fmt.Sprintf("%d matching subtitles found for %s", len(matches), filepath.Base(a.path)) }
 		if len(matches) == 1 {
 			lang := application.SubtitleLanguageFromFilename(a.path, matches[0])
 			if err := a.subtitle.LoadExternalSubtitle(matches[0]); err == nil { a.persistSubtitleAssignment(matches[0], lang, false) }

@@ -83,12 +83,13 @@ func (a *App) normalView(c *ui.Context) {
 									a.playPlaylistIndex(index)
 								}
 
-								remove := ui.Button(c, "×").Width(34).Height(38).Padding(0).Radius(9).
+								// OnClick runs after MyGo has finished building the
+								// current list pass. Removing here avoids changing the
+								// slice while ui.List is still visiting its old rows.
+								ui.Button(c, "×").Width(34).Height(38).Padding(0).Radius(9).
 									Background(ui.Hex("#202633")).Border(1, ui.Hex("#30394A")).TextColor(ui.Hex("#ADB5C4")).
-									Tooltip("Remove from queue")
-								if remove.Clicked() {
-									a.removePlaylistIndex(index)
-								}
+									Tooltip("Remove from queue").
+									OnClick(func() { a.removePlaylistIndex(index) })
 							})
 						}).Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(0).Gap(8)
 					}

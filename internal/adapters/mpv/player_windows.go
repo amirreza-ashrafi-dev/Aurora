@@ -294,8 +294,20 @@ func (p *Player) getPropertyStringValue(name string) (string, error) {
 	return windows.BytePtrToString((*byte)(unsafe.Pointer(ptr))), nil
 }
 
+// SetSubtitleVisibility hides or shows subtitles without changing the
+// selected track, so enabling subtitles restores the same track.
+func (p *Player) SetSubtitleVisibility(visible bool) error {
+	value := "no"
+	if visible {
+		value = "yes"
+	}
+	return p.setSubtitleProperty("sub-visibility", value)
+}
+
+// DisableSubtitles is retained as a convenience for callers that only hide
+// subtitles; it does not clear the selected track.
 func (p *Player) DisableSubtitles() error {
-	return p.setSubtitleProperty("sid", "no")
+	return p.SetSubtitleVisibility(false)
 }
 
 // SetSubtitleDelay applies a signed delay in seconds.

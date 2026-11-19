@@ -72,15 +72,24 @@ func (a *App) normalView(c *ui.Context) {
 						ui.List(c, nil, len(a.playlist), func(i int) {
 							index := i
 							label := filepath.Base(a.playlist[i])
-							item := ui.Button(c, label).FillWidth().Height(38).Padding(8, 10).Radius(9).NoWrap().Ellipsis("…")
-							if i == a.playlistPos {
-								item = item.Selected(true).Background(ui.Hex(auroraAccentSoft)).Border(1, ui.Hex("#65518C")).TextColor(ui.Hex("#F5F0FF"))
-							} else {
-								item = item.Background(ui.Hex("#1B202B")).Border(1, ui.Hex("#252C39")).TextColor(ui.Hex("#D0D4DF"))
-							}
-							if item.Clicked() {
-								a.playPlaylistIndex(index)
-							}
+							ui.Row(c).FillWidth().Height(38).Gap(5).Children(func() {
+								item := ui.Button(c, label).Grow(1).Height(38).Padding(8, 10).Radius(9).NoWrap().Ellipsis("…")
+								if i == a.playlistPos {
+									item = item.Selected(true).Background(ui.Hex(auroraAccentSoft)).Border(1, ui.Hex("#65518C")).TextColor(ui.Hex("#F5F0FF"))
+								} else {
+									item = item.Background(ui.Hex("#1B202B")).Border(1, ui.Hex("#252C39")).TextColor(ui.Hex("#D0D4DF"))
+								}
+								if item.Clicked() {
+									a.playPlaylistIndex(index)
+								}
+
+								remove := ui.Button(c, "×").Width(34).Height(38).Padding(0).Radius(9).
+									Background(ui.Hex("#202633")).Border(1, ui.Hex("#30394A")).TextColor(ui.Hex("#ADB5C4")).
+									Tooltip("Remove from queue")
+								if remove.Clicked() {
+									a.removePlaylistIndex(index)
+								}
+							})
 						}).Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(0).Gap(8)
 					}
 

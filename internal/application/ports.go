@@ -7,6 +7,7 @@ type Player interface {
 	Load(path string) error
 	Append(path string) error
 	PlayIndex(index int) error
+	RemovePlaylistItem(index int) error
 	GetDouble(name string) (float64, error)
 	SetPaused(paused bool) error
 	Seek(seconds float64) error

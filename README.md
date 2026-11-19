@@ -19,7 +19,7 @@ The goal is simple: make watching videos feel effortless.
 ## Current Features
 
 - Video playback powered by libmpv
-- Playlist and playback controls
+- Playlist and playback controls, including removing individual queue items
 - Fullscreen playback with an auto-hiding floating controller
 - **Cinematic Mode** for distraction-free windowed or fullscreen viewing
 - Keyboard shortcuts for playback, seeking, volume, fullscreen, and Cinematic Mode

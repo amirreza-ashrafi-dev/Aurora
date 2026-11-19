@@ -106,6 +106,58 @@ func (a *App) addFiles(paths []string) {
 	}
 }
 
+func (a *App) removePlaylistIndex(index int) {
+	if a.player == nil || index < 0 || index >= len(a.playlist) {
+		return
+	}
+
+	removedPath := a.playlist[index]
+	if err := a.player.RemovePlaylistItem(index); err != nil {
+		a.status = "Remove from queue: " + err.Error()
+		return
+	}
+
+	updated, nextCurrent, removedCurrent := application.RemovePlaylistEntry(
+		a.playlist, a.playlistPos, index,
+	)
+	a.playlist = updated
+	a.playlistPos = nextCurrent
+
+	if !removedCurrent {
+		a.status = fmt.Sprintf("Removed %q from queue", filepath.Base(removedPath))
+		return
+	}
+
+	if len(a.playlist) == 0 {
+		a.path = ""
+		a.state.Position = 0
+		a.state.Duration = 0
+		a.state.Paused = true
+		a.status = "Queue is empty"
+		a.hideVideoHost()
+		return
+	}
+
+	a.path = a.playlist[nextCurrent]
+	a.state.Position = 0
+	a.state.Duration = 0
+	a.state.Paused = false
+
+	// mpv automatically starts the next entry when the current entry is
+	// removed. If the removed item was last, explicitly start the new final
+	// entry because there is no next item.
+	if index >= len(a.playlist) {
+		if err := a.player.PlayIndex(nextCurrent); err != nil {
+			a.status = fmt.Sprintf("Removed %q; could not start %q: %v",
+				filepath.Base(removedPath), filepath.Base(a.path), err)
+			return
+		}
+	}
+
+	a.status = fmt.Sprintf("Removed %q; playing %q",
+		filepath.Base(removedPath), filepath.Base(a.path))
+}
+
 func (a *App) playPlaylistIndex(index int) {
 	if a.player == nil || index < 0 || index >= len(a.playlist) {
 		return

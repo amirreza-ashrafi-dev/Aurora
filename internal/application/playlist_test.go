@@ -40,3 +40,69 @@ func TestFilterNewMediaDetectsDuplicateWithinSelection(t *testing.T) {
 		t.Fatalf("unexpected result: valid=%v duplicates=%d", result.Valid, result.Duplicates)
 	}
 }
+
+
+func TestRemovePlaylistEntry(t *testing.T) {
+	tests := []struct {
+		name           string
+		queue          []string
+		currentIndex   int
+		removeIndex    int
+		wantQueue      []string
+		wantCurrent    int
+		wantCurrentOut bool
+	}{
+		{
+			name: "remove item before current",
+			queue: []string{"a", "b", "c"}, currentIndex: 2, removeIndex: 0,
+			wantQueue: []string{"b", "c"}, wantCurrent: 1,
+		},
+		{
+			name: "remove item after current",
+			queue: []string{"a", "b", "c"}, currentIndex: 0, removeIndex: 2,
+			wantQueue: []string{"a", "b"}, wantCurrent: 0,
+		},
+		{
+			name: "remove current and select next",
+			queue: []string{"a", "b", "c"}, currentIndex: 1, removeIndex: 1,
+			wantQueue: []string{"a", "c"}, wantCurrent: 1, wantCurrentOut: true,
+		},
+		{
+			name: "remove current final item and select previous",
+			queue: []string{"a", "b", "c"}, currentIndex: 2, removeIndex: 2,
+			wantQueue: []string{"a", "b"}, wantCurrent: 1, wantCurrentOut: true,
+		},
+		{
+			name: "remove only item",
+			queue: []string{"a"}, currentIndex: 0, removeIndex: 0,
+			wantQueue: []string{}, wantCurrent: 0, wantCurrentOut: true,
+		},
+		{
+			name: "invalid index leaves queue unchanged",
+			queue: []string{"a", "b"}, currentIndex: 1, removeIndex: 3,
+			wantQueue: []string{"a", "b"}, wantCurrent: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotQueue, gotCurrent, gotRemovedCurrent := RemovePlaylistEntry(
+				tt.queue, tt.currentIndex, tt.removeIndex,
+			)
+			if len(gotQueue) != len(tt.wantQueue) {
+				t.Fatalf("queue length = %d, want %d", len(gotQueue), len(tt.wantQueue))
+			}
+			for i := range gotQueue {
+				if gotQueue[i] != tt.wantQueue[i] {
+					t.Errorf("queue[%d] = %q, want %q", i, gotQueue[i], tt.wantQueue[i])
+				}
+			}
+			if gotCurrent != tt.wantCurrent {
+				t.Errorf("current index = %d, want %d", gotCurrent, tt.wantCurrent)
+			}
+			if gotRemovedCurrent != tt.wantCurrentOut {
+				t.Errorf("removed current = %v, want %v", gotRemovedCurrent, tt.wantCurrentOut)
+			}
+		})
+	}
+}

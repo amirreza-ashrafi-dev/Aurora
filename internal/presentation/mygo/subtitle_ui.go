@@ -461,7 +461,7 @@ func (a *App) subtitleStudioFlyoutButtonAt(
 		Gap:       8,
 		Width:     440,
 		Height:    500,
-		Focusable: true,
+		Focusable: false,
 		Hidden:    true,
 		Shadow:    true,
 		Content:   ui.View(a.subtitleStudioFlyoutView),

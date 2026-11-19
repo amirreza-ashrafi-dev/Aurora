@@ -31,6 +31,7 @@ type App struct {
 	subtitleStyle domain.SubtitleStyle
 	subtitleDelay float64
 	subtitleMenuOpen bool
+	fullscreenSubtitleMenuOpen bool
 	colorPickerOpen bool
 	activeSubtitleLanguage string
 	history        application.ProgressRepository

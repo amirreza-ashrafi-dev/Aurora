@@ -23,7 +23,7 @@ The goal is simple: make watching videos feel effortless.
 - Fullscreen playback with an auto-hiding floating controller
 - **Cinematic Mode** for distraction-free windowed or fullscreen viewing
 - **Smart Resume** offers to continue a video from its last saved position or start over
-- External subtitle loading, strict filename matching, per-video subtitle restoration, drag-and-drop, and Subtitle Studio appearance/synchronization
+- External subtitle loading, strict filename matching, per-video external subtitle restoration, drag-and-drop, custom text/outline colors, and language-specific appearance profiles
 - Keyboard shortcuts for playback, seeking, volume, fullscreen, and Cinematic Mode
 
 ### Cinematic Mode
@@ -32,7 +32,7 @@ Press **C** or use the Cinematic Mode button to hide the normal player interface
 
 ### Subtitle Studio (in progress)
 
-Load external SRT, ASS/SSA, WebVTT, or SUB subtitle files while a video is playing. The initial Studio controls font family, size, text color, outline thickness, vertical position, and subtitle delay. Appearance defaults are stored locally; language-specific profile editing and per-video subtitle assignment restoration remain follow-up work on the feature branch.
+Load external SRT, ASS/SSA, WebVTT, or SUB subtitle files while a video is playing. The initial Studio controls font family, size, text color, outline thickness, vertical position, and subtitle delay. Appearance defaults are stored locally; language-specific profiles can be saved from the Studio when the active track exposes language metadata. Embedded track selections are not yet persisted between sessions.
 
 ### Smart Resume
 

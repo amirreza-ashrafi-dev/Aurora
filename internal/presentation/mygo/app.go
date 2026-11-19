@@ -22,6 +22,27 @@ type App struct {
 	videoHWND     uintptr
 	player        application.Player
 	playerFactory application.PlayerFactory
+	subtitle application.SubtitlePlayer
+	subtitlePreferences application.SubtitlePreferencesRepository
+	subtitleAssignments application.SubtitleAssignmentRepository
+	subtitleAssignmentRecords map[string]domain.SubtitleAssignment
+	subtitleCandidates []string
+	subtitlePrefs domain.SubtitlePreferences
+	subtitleStyle domain.SubtitleStyle
+	subtitleDelay float64
+	subtitleDisabled bool
+	subtitleMenuOpen bool
+	fullscreenSubtitleMenuOpen bool
+	subtitleFlyout *mygo.Window
+	subtitleButtonHandle ui.Handle
+	subtitleFlyoutAnchor mygo.Rectangle
+
+	fullscreenSubtitleFlyout *mygo.Window
+	fullscreenSubtitleButtonHandle ui.Handle
+	fullscreenSubtitleFlyoutAnchor mygo.Rectangle
+	fullscreenSubtitleButtonBounds mygo.Rectangle
+	colorPickerOpen bool
+	activeSubtitleLanguage string
 	history        application.ProgressRepository
 	historyRecords map[string]domain.PlaybackProgress
 	pendingResume  *domain.PlaybackProgress
@@ -60,11 +81,16 @@ type App struct {
 
 // New creates the presentation controller. The player is created later, after
 // MyGo has supplied the native window handle for the embedded MPV surface.
-func New(platform application.NativePlatform, playerFactory application.PlayerFactory, history application.ProgressRepository) *App {
+func New(platform application.NativePlatform, playerFactory application.PlayerFactory, history application.ProgressRepository, subtitlePreferences application.SubtitlePreferencesRepository, subtitleAssignments application.SubtitleAssignmentRepository) *App {
 	return &App{
 		platform:       platform,
 		playerFactory:  playerFactory,
 		history:        history,
+		subtitlePreferences: subtitlePreferences,
+		subtitleAssignments: subtitleAssignments,
+		subtitleAssignmentRecords: make(map[string]domain.SubtitleAssignment),
+		subtitlePrefs: domain.SubtitlePreferences{Global: domain.DefaultSubtitleStyle()},
+		subtitleStyle: domain.DefaultSubtitleStyle(),
 		historyRecords: make(map[string]domain.PlaybackProgress),
 		status:         "Starting Aurora Player...",
 		state:          domain.PlaybackState{Volume: 100},
@@ -101,6 +127,14 @@ func (a *App) onReady() {
 		a.status = "Double-click handler: " + err.Error()
 		log.Println(a.status)
 	}
+	if err := a.platform.InstallVideoFileDrop(a.videoHWND, func(paths []string) {
+		if a.win == nil || a.win.IsDestroyed() { return }
+		a.win.Update(func() {
+			if !a.win.IsDestroyed() { a.handleDroppedSubtitleFiles(paths) }
+		})
+	}); err != nil {
+		log.Printf("install video subtitle drop handler: %v", err)
+	}
 
 	if a.playerFactory != nil {
 		a.player, err = a.playerFactory(a.videoHWND)
@@ -116,6 +150,26 @@ func (a *App) onReady() {
 			a.status = err.Error()
 		}
 		a.loadProgressHistory()
+		a.loadSubtitleAssignments()
+		a.win.OnFileDrop(func(event *mygo.FileDropEvent) {
+			if event == nil { return }
+			a.handleDroppedSubtitleFiles(event.Paths)
+		})
+		a.subtitle, _ = a.player.(application.SubtitlePlayer)
+		if a.subtitlePreferences != nil {
+			prefs, prefErr := a.subtitlePreferences.Load()
+			if prefErr != nil {
+				log.Printf("load subtitle preferences: %v", prefErr)
+			} else {
+				a.subtitlePrefs = prefs
+				a.subtitleStyle = application.SubtitleStyleForLanguage(prefs, "und")
+				if a.subtitle != nil {
+					if styleErr := a.subtitle.SetSubtitleStyle(a.subtitleStyle); styleErr != nil {
+						log.Printf("apply default subtitle style: %v", styleErr)
+					}
+				}
+			}
+		}
 		a.startPolling()
 	}
 
@@ -141,6 +195,7 @@ func (a *App) onReady() {
 	})
 	a.win.OnEnterFullScreen(func() {
 		a.fullscreen = true
+		a.closeSubtitleFlyout()
 		a.setFullscreenCursorHidden(false)
 		a.layoutVideo()
 		a.updateControllerBounds()

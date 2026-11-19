@@ -28,6 +28,10 @@ The direction is enforced by Go package boundaries:
 
 The presentation layer samples the current MPV position and sends progress snapshots through a serialized background writer. The JSON adapter enforces a maximum of 500 records and 1 MiB, evicting the least recently watched entries when necessary. Resume validation and path matching live in `application`; the presentation layer owns the Resume / Start over prompt and decides when to offer it. Automatic queue advancement does not interrupt playback with a resume prompt.
 
+## Subtitle Studio
+
+Subtitle behavior is exposed through the focused `application.SubtitlePlayer` capability instead of expanding the general playback port. Subtitle preferences and per-video assignment models live in `domain`; application logic owns language normalization, style validation, and strict filename matching. `adapters/mpv` maps the capability to libmpv subtitle commands and properties. `adapters/subtitles` stores versioned preferences and assignment JSON separately with bounded, atomic writes. The MyGo presentation owns the Studio controls and synchronization shortcuts.
+
 ## Important boundary: video geometry
 
 MyGo's stage bounds are read in the presentation layer and converted to `domain.Rect`. The Windows adapter receives only that neutral DIP rectangle and performs DPI conversion to physical pixels. It no longer imports `github.com/egoist/mygo/ui`.

@@ -12,6 +12,8 @@ import (
 	"unsafe"
 
 	"github.com/ebitengine/purego"
+
+	"my-go/internal/domain"
 	"golang.org/x/sys/windows"
 )
 
@@ -28,6 +30,8 @@ type Player struct {
 	getProperty       func(unsafe.Pointer, string, int32, unsafe.Pointer) int32
 	terminateDestroy  func(unsafe.Pointer)
 	errorString       func(int32) uintptr
+	getPropertyString func(unsafe.Pointer, string) uintptr
+	free              func(uintptr)
 }
 
 func mpvErrorText(ptr uintptr) string {
@@ -72,6 +76,8 @@ func New(hwnd uintptr, resourcesDir string) (*Player, error) {
 	purego.RegisterLibFunc(&p.getProperty, h, "mpv_get_property")
 	purego.RegisterLibFunc(&p.terminateDestroy, h, "mpv_terminate_destroy")
 	purego.RegisterLibFunc(&p.errorString, h, "mpv_error_string")
+	purego.RegisterLibFunc(&p.getPropertyString, h, "mpv_get_property_string")
+	purego.RegisterLibFunc(&p.free, h, "mpv_free")
 
 	p.ctx = p.create()
 	if p.ctx == nil {
@@ -161,6 +167,15 @@ func (p *Player) RemovePlaylistItem(index int) error {
 	return p.commandArgs("playlist-remove", strconv.Itoa(index))
 }
 
+func (p *Player) getInt64(name string) (int64, error) {
+	if p == nil || p.ctx == nil { return 0, fmt.Errorf("mpv is not initialized") }
+	var value int64
+	code := p.getProperty(p.ctx, name, 4, unsafe.Pointer(&value))
+	runtime.KeepAlive(&value)
+	if code < 0 { return 0, fmt.Errorf("get property %q failed: %s", name, mpvErrorText(p.errorString(code))) }
+	return value, nil
+}
+
 func (p *Player) GetDouble(name string) (float64, error) {
 	if p == nil || p.ctx == nil {
 		return 0, fmt.Errorf("mpv is not initialized")
@@ -235,4 +250,114 @@ func (p *Player) Close() {
 		windows.FreeLibrary(p.dll)
 		p.dll = 0
 	}
+}
+
+
+// LoadExternalSubtitle loads and selects an external subtitle for the current
+// media item. MPV owns the track after this command succeeds.
+func (p *Player) LoadExternalSubtitle(path string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return fmt.Errorf("no subtitle file selected")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return fmt.Errorf("subtitle file is unavailable: %w", err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("subtitle path is a directory")
+	}
+	return p.commandArgs("sub-add", abs, "select")
+}
+
+// DisableSubtitles disables the active subtitle track without removing tracks.
+func (p *Player) CycleSubtitleTrack() error { return p.commandArgs("cycle", "sid") }
+
+func (p *Player) RemoveSelectedExternalSubtitle() error {
+	id, err := p.getInt64("sid")
+	if err != nil { return err }
+	if id < 0 { return fmt.Errorf("no subtitle track is selected") }
+	external, err := p.getPropertyStringValue(fmt.Sprintf("track-list/%d/external", id))
+	if err != nil || external != "yes" { return fmt.Errorf("the selected subtitle is not an external track") }
+	return p.commandArgs("sub-remove", strconv.FormatInt(int64(id), 10))
+}
+
+func (p *Player) getPropertyStringValue(name string) (string, error) {
+	if p == nil || p.ctx == nil { return "", fmt.Errorf("mpv is not initialized") }
+	ptr := p.getPropertyString(p.ctx, name)
+	if ptr == 0 { return "", fmt.Errorf("mpv property %q is unavailable", name) }
+	defer p.free(ptr)
+	return windows.BytePtrToString((*byte)(unsafe.Pointer(ptr))), nil
+}
+
+// SetSubtitleVisibility hides or shows subtitles without changing the
+// selected track, so enabling subtitles restores the same track.
+func (p *Player) SetSubtitleVisibility(visible bool) error {
+	value := "no"
+	if visible {
+		value = "yes"
+	}
+	return p.setSubtitleProperty("sub-visibility", value)
+}
+
+// DisableSubtitles is retained as a convenience for callers that only hide
+// subtitles; it does not clear the selected track.
+func (p *Player) DisableSubtitles() error {
+	return p.SetSubtitleVisibility(false)
+}
+
+// SetSubtitleDelay applies a signed delay in seconds.
+func (p *Player) SetSubtitleDelay(seconds float64) error {
+	if seconds < -3600 || seconds > 3600 {
+		return fmt.Errorf("subtitle delay must be between -3600 and 3600 seconds")
+	}
+	return p.setSubtitleProperty("sub-delay", strconv.FormatFloat(seconds, 'f', 3, 64))
+}
+
+// SetSubtitleStyle applies text-subtitle appearance properties. MPV and the
+// subtitle format decide whether individual properties are applicable.
+func (p *Player) SetSubtitleStyle(style domain.SubtitleStyle) error {
+	properties := []struct{ name, value string }{
+		{"sub-font", style.FontFamily},
+		{"sub-font-size", strconv.FormatFloat(style.FontSize, 'f', 1, 64)},
+		{"sub-color", style.TextColor},
+		{"sub-outline-color", style.OutlineColor},
+		{"sub-outline-size", strconv.FormatFloat(style.OutlineSize, 'f', 1, 64)},
+		{"sub-pos", strconv.Itoa(style.VerticalPosition)},
+	}
+	for _, property := range properties {
+		if err := p.setSubtitleProperty(property.name, property.value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ActiveSubtitleLanguage returns the language metadata of the selected
+// subtitle track when MPV exposes it. Empty metadata is not an error.
+func (p *Player) ActiveSubtitleLanguage() (string, error) {
+	if p == nil || p.ctx == nil {
+		return "", fmt.Errorf("mpv is not initialized")
+	}
+	ptr := p.getPropertyString(p.ctx, "current-tracks/sub/lang")
+	if ptr == 0 {
+		return "", nil
+	}
+	defer p.free(ptr)
+	return windows.BytePtrToString((*byte)(unsafe.Pointer(ptr))), nil
+}
+
+func (p *Player) setSubtitleProperty(name, value string) error {
+	if p == nil || p.ctx == nil {
+		return fmt.Errorf("mpv is not initialized")
+	}
+	code := p.setPropertyString(p.ctx, name, value)
+	if code < 0 {
+		return fmt.Errorf("set subtitle property %q failed: %s", name, mpvErrorText(p.errorString(code)))
+	}
+	return nil
 }

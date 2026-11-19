@@ -72,6 +72,9 @@ func (a *App) setCinematicMode(enabled bool) {
 		return
 	}
 	a.cinematicMode = enabled
+	if enabled {
+		a.closeSubtitleFlyout()
+	}
 	a.videoLayoutFramePending = false
 	a.win.Invalidate()
 	if a.controller != nil && !a.controller.IsDestroyed() {
@@ -91,8 +94,19 @@ func (a *App) registerShortcuts(c *ui.Context) {
 	c.OnWindowShortcut(0, ui.KeyF, a.toggleFullscreen)
 	c.OnWindowShortcut(0, ui.KeyF11, a.toggleFullscreen)
 	c.OnWindowShortcut(ui.Alt, ui.KeyEnter, a.toggleFullscreen)
+	c.OnWindowShortcut(ui.Alt, ui.KeyLeft, func() { a.adjustSubtitleDelay(-0.1) })
+	c.OnWindowShortcut(ui.Alt, ui.KeyRight, func() { a.adjustSubtitleDelay(0.1) })
+	c.OnWindowShortcut(ui.Alt, ui.KeyBackspace, func() { a.resetSubtitleDelay() })
 	c.OnWindowShortcut(0, ui.KeyC, a.toggleCinematicMode)
 	c.OnWindowShortcut(0, ui.KeyEscape, func() {
+		if a.fullscreenSubtitleFlyout != nil && !a.fullscreenSubtitleFlyout.IsDestroyed() {
+			a.closeFullscreenSubtitleFlyout()
+			return
+		}
+		if a.subtitleFlyout != nil && !a.subtitleFlyout.IsDestroyed() {
+			a.closeSubtitleFlyout()
+			return
+		}
 		if a.cinematicMode {
 			a.setCinematicMode(false)
 			return

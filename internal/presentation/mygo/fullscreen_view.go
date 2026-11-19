@@ -26,6 +26,7 @@ func (a *App) fullscreenControls(c *ui.Context) {
 				if auroraQuietButton(c, cinemaLabel).Clicked() {
 					a.toggleCinematicMode()
 				}
+				a.fullscreenSubtitleStudioFlyoutButton(c)
 				if a.win != nil && a.win.IsFullScreen() {
 					if auroraQuietButton(c, "Exit fullscreen").Clicked() {
 						a.exitFullscreen()

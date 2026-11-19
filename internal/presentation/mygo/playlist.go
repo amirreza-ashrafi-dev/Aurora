@@ -77,6 +77,7 @@ func (a *App) addFiles(paths []string) {
 		}
 		a.playlist = append(a.playlist, valid[0])
 		a.path = valid[0]
+		a.resetSubtitleDelay()
 		a.playlistPos = 0
 		for _, path := range valid[1:] {
 			if err := a.player.Append(path); err != nil {
@@ -90,6 +91,7 @@ func (a *App) addFiles(paths []string) {
 		a.state.Paused = false
 		a.status = "Playing: " + filepath.Base(a.path) + validationNote
 		a.offerResumeForCurrent()
+		a.restoreSubtitleForCurrent()
 		return
 	}
 
@@ -139,11 +141,13 @@ func (a *App) removePlaylistIndex(index int) {
 		a.state.Duration = 0
 		a.state.Paused = true
 		a.status = "Queue is empty"
+		a.subtitleCandidates = nil
 		a.hideVideoHost()
 		return
 	}
 
 	a.path = a.playlist[nextCurrent]
+	a.resetSubtitleDelay()
 	a.state.Position = 0
 	a.state.Duration = 0
 	a.state.Paused = false
@@ -159,6 +163,7 @@ func (a *App) removePlaylistIndex(index int) {
 
 	a.status = fmt.Sprintf("Removed %q; playing %q",
 		filepath.Base(removedPath), filepath.Base(a.path))
+	a.restoreSubtitleForCurrent()
 }
 
 func (a *App) playPlaylistIndex(index int) {
@@ -174,11 +179,13 @@ func (a *App) playPlaylistIndex(index int) {
 	}
 	a.playlistPos = index
 	a.path = a.playlist[index]
+	a.resetSubtitleDelay()
 	a.state.Position = 0
 	a.state.Duration = 0
 	a.state.Paused = false
 	a.status = "Playing: " + filepath.Base(a.path)
 	a.offerResumeForCurrent()
+	a.restoreSubtitleForCurrent()
 }
 
 func (a *App) next() {

@@ -69,7 +69,7 @@ func (r *JSONRepository) Load() (domain.SubtitlePreferences, error) {
 	return envelope.Data, nil
 }
 
-func (r *JSONRepository) Save(prefs domain.SubtitlePreferences) error {
+func (r *JSONRepository) SavePreferences(prefs domain.SubtitlePreferences) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	prefs.Version = preferencesVersion
@@ -91,7 +91,7 @@ func (r *JSONRepository) LoadAll() ([]domain.SubtitleAssignment, error) {
 	return envelope.Records, nil
 }
 
-func (r *JSONRepository) Save(record domain.SubtitleAssignment) error {
+func (r *JSONRepository) SaveAssignment(record domain.SubtitleAssignment) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	record.MediaPath = normalizePath(record.MediaPath)

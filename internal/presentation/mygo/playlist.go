@@ -141,6 +141,7 @@ func (a *App) removePlaylistIndex(index int) {
 		a.state.Duration = 0
 		a.state.Paused = true
 		a.status = "Queue is empty"
+		a.subtitleCandidates = nil
 		a.hideVideoHost()
 		return
 	}

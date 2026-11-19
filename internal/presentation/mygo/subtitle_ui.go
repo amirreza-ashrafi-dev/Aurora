@@ -146,7 +146,7 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 		})
 		ui.Row(c).Gap(7).Children(func() {
 			if auroraQuietButton(c, "Next track").Clicked() { if tracks, ok := a.subtitle.(interface{ CycleSubtitleTrack() error }); ok { if err := tracks.CycleSubtitleTrack(); err != nil { a.status = err.Error() } else { a.status = "Subtitle track changed" } } }
-			if auroraQuietButton(c, "Remove external").Clicked() { if a.subtitle != nil { a.status = "Remove an external subtitle after selecting it is not available for this track yet" } }
+			if auroraQuietButton(c, "Remove external").Clicked() { if tracks, ok := a.subtitle.(interface{ RemoveSelectedExternalSubtitle() error }); ok { if err := tracks.RemoveSelectedExternalSubtitle(); err != nil { a.status = err.Error() } else { a.persistSubtitleAssignment("", "", true); a.status = "External subtitle removed" } } }
 			if auroraQuietButton(c, "Save for language").Clicked() { a.saveStyleForActiveLanguage() }
 		})
 		if len(a.subtitleCandidates) > 0 {

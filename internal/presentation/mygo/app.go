@@ -22,6 +22,13 @@ type App struct {
 	videoHWND     uintptr
 	player        application.Player
 	playerFactory application.PlayerFactory
+	history        application.ProgressRepository
+	historyRecords map[string]domain.PlaybackProgress
+	pendingResume  *domain.PlaybackProgress
+
+	progressRequests chan progressWriteRequest
+	progressStop     chan struct{}
+	progressDone     chan struct{}
 
 	videoStageHandle        ui.Handle
 	videoStageBounds        domain.Rect
@@ -53,12 +60,14 @@ type App struct {
 
 // New creates the presentation controller. The player is created later, after
 // MyGo has supplied the native window handle for the embedded MPV surface.
-func New(platform application.NativePlatform, playerFactory application.PlayerFactory) *App {
+func New(platform application.NativePlatform, playerFactory application.PlayerFactory, history application.ProgressRepository) *App {
 	return &App{
-		platform:      platform,
-		playerFactory: playerFactory,
-		status:        "Starting Aurora Player...",
-		state:         domain.PlaybackState{Volume: 100},
+		platform:       platform,
+		playerFactory:  playerFactory,
+		history:        history,
+		historyRecords: make(map[string]domain.PlaybackProgress),
+		status:         "Starting Aurora Player...",
+		state:          domain.PlaybackState{Volume: 100},
 	}
 }
 
@@ -106,6 +115,7 @@ func (a *App) onReady() {
 		if err := a.player.SetVolume(a.state.Volume); err != nil {
 			a.status = err.Error()
 		}
+		a.loadProgressHistory()
 		a.startPolling()
 	}
 

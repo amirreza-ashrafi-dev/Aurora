@@ -17,8 +17,10 @@ func (a *App) togglePlayPause() {
 	a.state.Paused = next
 	if next {
 		a.status = "Paused"
+		a.scheduleCurrentProgressSave()
 	} else {
 		a.status = "Playing"
+		a.cancelPendingProgressSave()
 	}
 }
 
@@ -32,6 +34,7 @@ func (a *App) seekBy(seconds float64) {
 		return
 	}
 	a.state.Position = target
+	a.scheduleCurrentProgressSave()
 }
 
 func (a *App) changeVolume(amount float64) {

@@ -16,6 +16,13 @@ type Player interface {
 	Close()
 }
 
+// ProgressRepository stores the most recent playback position for each media path.
+type ProgressRepository interface {
+	Load() ([]domain.PlaybackProgress, error)
+	Save(domain.PlaybackProgress) error
+	Delete(mediaPath string) error
+}
+
 // NativePlatform is the narrow Win32 port required by the player presentation.
 // It deliberately uses domain geometry types and has no MyGo dependency.
 type NativePlatform interface {

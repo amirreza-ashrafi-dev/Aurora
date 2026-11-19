@@ -6,6 +6,8 @@ func (a *App) Close() {
 	a.closeOnce.Do(func() {
 		a.stopControllerMonitor()
 		a.stopPolling()
+		a.saveCurrentProgressImmediately()
+		a.stopProgressWorker()
 		a.setFullscreenCursorHidden(false)
 		if a.controller != nil {
 			if !a.controller.IsDestroyed() {

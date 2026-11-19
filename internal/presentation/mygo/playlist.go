@@ -89,6 +89,7 @@ func (a *App) addFiles(paths []string) {
 		a.state.Duration = 0
 		a.state.Paused = false
 		a.status = "Playing: " + filepath.Base(a.path) + validationNote
+		a.offerResumeForCurrent()
 		return
 	}
 
@@ -112,6 +113,10 @@ func (a *App) removePlaylistIndex(index int) {
 	}
 
 	removedPath := a.playlist[index]
+	if index == a.playlistPos {
+		a.saveCurrentProgressImmediately()
+		a.pendingResume = nil
+	}
 	if err := a.player.RemovePlaylistItem(index); err != nil {
 		a.status = "Remove from queue: " + err.Error()
 		return
@@ -160,6 +165,8 @@ func (a *App) playPlaylistIndex(index int) {
 	if a.player == nil || index < 0 || index >= len(a.playlist) {
 		return
 	}
+	a.saveCurrentProgressImmediately()
+	a.pendingResume = nil
 	a.revealVideoHost()
 	if err := a.player.PlayIndex(index); err != nil {
 		a.status = err.Error()
@@ -171,6 +178,7 @@ func (a *App) playPlaylistIndex(index int) {
 	a.state.Duration = 0
 	a.state.Paused = false
 	a.status = "Playing: " + filepath.Base(a.path)
+	a.offerResumeForCurrent()
 }
 
 func (a *App) next() {

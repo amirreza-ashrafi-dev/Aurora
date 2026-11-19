@@ -31,6 +31,7 @@ func (a *App) view(c *ui.Context) {
 func (a *App) normalView(c *ui.Context) {
 	ui.Column(c).Fill().Background(ui.Hex(auroraBackground)).Children(func() {
 		a.windowTitleBar(c)
+		a.resumePrompt(c)
 		ui.Column(c).Fill().Padding(auroraMainPadding).Gap(10).Background(ui.Hex(auroraBackground)).Children(func() {
 			ui.Row(c).
 				Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(auroraStageMinHeight).
@@ -121,12 +122,7 @@ func (a *App) normalView(c *ui.Context) {
 			ui.Row(c).Shrink(0).Gap(10).Children(func() {
 				ui.Text(c, formatTime(a.state.Position)).Width(48).FontSize(10).TextColor(ui.Hex(auroraMuted))
 				timeline := ui.Slider(c, &a.state.Position, 0, maxDuration).Fill().Height(24)
-				a.scrubbing = timeline.Dragging()
-				if timeline.Changed() && a.player != nil {
-					if err := a.player.Seek(a.state.Position); err != nil {
-						a.status = err.Error()
-					}
-				}
+				a.updateTimeline(timeline.Dragging(), timeline.Changed())
 				ui.Text(c, formatTime(a.state.Duration)).Width(48).FontSize(10).TextColor(ui.Hex(auroraMuted))
 			})
 
@@ -151,6 +147,7 @@ func (a *App) normalView(c *ui.Context) {
 					} else {
 						a.state.Position = 0
 						a.state.Paused = true
+						a.clearCurrentProgress()
 						a.status = "Stopped"
 					}
 				}

@@ -97,65 +97,162 @@ func (a *App) resetSubtitleDelay() {
 }
 
 func (a *App) subtitleStudioControls(c *ui.Context) {
-	ui.Column(c).FillWidth().Padding(14).Gap(10).Children(func() {
-		ui.Row(c).Gap(8).Children(func() {
+	ui.Column(c).FillWidth().Padding(12).Gap(9).Children(func() {
+		ui.Row(c).FillWidth().Shrink(0).Gap(6).Children(func() {
 			ui.Text(c, "SUBTITLE STUDIO").FontSize(10).Bold().LetterSpacing(1).TextColor(ui.Hex(auroraText))
 			ui.Spacer(c)
-			if auroraQuietButton(c, "Load file…").Clicked() { a.chooseSubtitleFile() }
-			if auroraQuietButton(c, "Disable").Clicked() {
-				if a.subtitle != nil {
-					if err := a.subtitle.DisableSubtitles(); err != nil { a.status = err.Error() } else {
-						a.persistSubtitleAssignment("", "", true)
-						a.status = "Subtitles disabled"
+			if auroraQuietButton(c, "Load file…").Clicked() {
+				a.chooseSubtitleFile()
+			}
+			if auroraQuietButton(c, "Disable").Clicked() && a.subtitle != nil {
+				if err := a.subtitle.DisableSubtitles(); err != nil {
+					a.status = err.Error()
+				} else {
+					a.persistSubtitleAssignment("", "", true)
+					a.status = "Subtitles disabled"
+				}
+			}
+		})
+
+		ui.Text(c, "FONT").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+		ui.Row(c).FillWidth().Shrink(0).Gap(5).Children(func() {
+			for _, font := range []string{"Segoe UI", "Arial", "Tahoma", "Yu Gothic"} {
+				name := font
+				button := auroraQuietButton(c, name).Grow(1).NoWrap().Ellipsis("…")
+				if button.Clicked() {
+					style := a.subtitleStyle
+					style.FontFamily = name
+					a.applySubtitleStyle(style)
+				}
+			}
+		})
+		ui.Row(c).FillWidth().Shrink(0).Gap(7).Children(func() {
+			ui.Text(c, "SIZE").FontSize(8).TextColor(ui.Hex(auroraMuted))
+			if auroraQuietButton(c, "A−").Clicked() {
+				style := a.subtitleStyle
+				style.FontSize -= 2
+				a.applySubtitleStyle(style)
+			}
+			ui.Text(c, fmt.Sprintf("%.0f px", a.subtitleStyle.FontSize)).FontSize(9).TextColor(ui.Hex(auroraText))
+			if auroraQuietButton(c, "A+").Clicked() {
+				style := a.subtitleStyle
+				style.FontSize += 2
+				a.applySubtitleStyle(style)
+			}
+			ui.Spacer(c)
+			ui.Text(c, "OUTLINE").FontSize(8).TextColor(ui.Hex(auroraMuted))
+			if auroraQuietButton(c, "−").Clicked() {
+				style := a.subtitleStyle
+				style.OutlineSize -= 0.5
+				a.applySubtitleStyle(style)
+			}
+			ui.Text(c, fmt.Sprintf("%.1f", a.subtitleStyle.OutlineSize)).FontSize(9).TextColor(ui.Hex(auroraText))
+			if auroraQuietButton(c, "+").Clicked() {
+				style := a.subtitleStyle
+				style.OutlineSize += 0.5
+				a.applySubtitleStyle(style)
+			}
+		})
+
+		ui.Text(c, "TEXT COLOR").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+		ui.Row(c).FillWidth().Shrink(0).Gap(6).Children(func() {
+			for _, color := range []string{"#FFFFFFFF", "#FFFFD166", "#FFFF6B6B", "#FF8BE9FD"} {
+				value := color
+				if auroraQuietButton(c, value).Clicked() {
+					style := a.subtitleStyle
+					style.TextColor = value
+					a.applySubtitleStyle(style)
+				}
+			}
+			ui.Spacer(c)
+			textColor := subtitleColorFromMPV(a.subtitleStyle.TextColor)
+			previousTextColor := textColor
+			ui.ColorWell(c, &textColor)
+			if textColor != previousTextColor {
+				style := a.subtitleStyle
+				style.TextColor = fmt.Sprintf("#FF%02X%02X%02X", textColor.R, textColor.G, textColor.B)
+				a.applySubtitleStyle(style)
+			}
+		})
+		ui.Text(c, "OUTLINE COLOR").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+		ui.Row(c).FillWidth().Shrink(0).Gap(6).Children(func() {
+			ui.Text(c, "Choose outline color").FontSize(9).TextColor(ui.Hex(auroraMuted))
+			ui.Spacer(c)
+			outlineColor := subtitleColorFromMPV(a.subtitleStyle.OutlineColor)
+			previousOutlineColor := outlineColor
+			ui.ColorWell(c, &outlineColor)
+			if outlineColor != previousOutlineColor {
+				style := a.subtitleStyle
+				style.OutlineColor = fmt.Sprintf("#FF%02X%02X%02X", outlineColor.R, outlineColor.G, outlineColor.B)
+				a.applySubtitleStyle(style)
+			}
+		})
+
+		ui.Text(c, "POSITION").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+		ui.Row(c).FillWidth().Shrink(0).Gap(7).Children(func() {
+			if auroraQuietButton(c, "Move up").Clicked() {
+				style := a.subtitleStyle
+				style.VerticalPosition -= 2
+				a.applySubtitleStyle(style)
+			}
+			ui.Text(c, fmt.Sprintf("%d", a.subtitleStyle.VerticalPosition)).FontSize(9).TextColor(ui.Hex(auroraText))
+			if auroraQuietButton(c, "Move down").Clicked() {
+				style := a.subtitleStyle
+				style.VerticalPosition += 2
+				a.applySubtitleStyle(style)
+			}
+		})
+
+		ui.Text(c, "SYNCHRONIZATION").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+		ui.Row(c).FillWidth().Shrink(0).Gap(6).Children(func() {
+			if auroraQuietButton(c, "−0.1s").Clicked() {
+				a.adjustSubtitleDelay(-0.1)
+			}
+			ui.Text(c, fmt.Sprintf("%+.1fs", a.subtitleDelay)).FontSize(9).TextColor(ui.Hex(auroraText))
+			if auroraQuietButton(c, "+0.1s").Clicked() {
+				a.adjustSubtitleDelay(0.1)
+			}
+			ui.Spacer(c)
+			if auroraQuietButton(c, "Reset").Clicked() {
+				a.resetSubtitleDelay()
+			}
+		})
+
+		ui.Text(c, "TRACKS").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+		ui.Row(c).FillWidth().Shrink(0).Gap(6).Children(func() {
+			if auroraQuietButton(c, "Next track").Clicked() {
+				if tracks, ok := a.subtitle.(interface{ CycleSubtitleTrack() error }); ok {
+					if err := tracks.CycleSubtitleTrack(); err != nil {
+						a.status = err.Error()
+					} else {
+						a.status = "Subtitle track changed"
 					}
 				}
 			}
-		})
-		ui.Row(c).Gap(7).Children(func() {
-			ui.Text(c, "FONT").FontSize(8).TextColor(ui.Hex(auroraMuted))
-			for _, font := range []string{"Segoe UI", "Arial", "Tahoma", "Yu Gothic"} {
-				if auroraQuietButton(c, font).Clicked() {
-					style := a.subtitleStyle; style.FontFamily = font; a.applySubtitleStyle(style)
+			if auroraQuietButton(c, "Remove external").Clicked() {
+				if tracks, ok := a.subtitle.(interface{ RemoveSelectedExternalSubtitle() error }); ok {
+					if err := tracks.RemoveSelectedExternalSubtitle(); err != nil {
+						a.status = err.Error()
+					} else {
+						a.persistSubtitleAssignment("", "", true)
+						a.status = "External subtitle removed"
+					}
 				}
 			}
-			ui.Spacer(c)
-			if auroraQuietButton(c, "A−").Clicked() { style:=a.subtitleStyle; style.FontSize-=2; a.applySubtitleStyle(style) }
-			ui.Text(c, fmt.Sprintf("%.0f px", a.subtitleStyle.FontSize)).FontSize(9).TextColor(ui.Hex(auroraText))
-			if auroraQuietButton(c, "A+").Clicked() { style:=a.subtitleStyle; style.FontSize+=2; a.applySubtitleStyle(style) }
-		})
-		ui.Row(c).Gap(7).Children(func() {
-			ui.Text(c, "TEXT").FontSize(8).TextColor(ui.Hex(auroraMuted))
-			for _, color := range []string{"#FFFFFFFF", "#FFFFD166", "#FFFF6B6B", "#FF8BE9FD"} {
-				if auroraQuietButton(c, color).Clicked() { style:=a.subtitleStyle; style.TextColor=color; a.applySubtitleStyle(style) }
+			if auroraQuietButton(c, "Save language").Clicked() {
+				a.saveStyleForActiveLanguage()
 			}
-			ui.Text(c, "OUTLINE").FontSize(8).TextColor(ui.Hex(auroraMuted))
-			if auroraQuietButton(c, "−").Clicked() { style:=a.subtitleStyle; style.OutlineSize-=0.5; a.applySubtitleStyle(style) }
-			ui.Text(c, fmt.Sprintf("%.1f", a.subtitleStyle.OutlineSize)).FontSize(9).TextColor(ui.Hex(auroraText))
-			if auroraQuietButton(c, "+").Clicked() { style:=a.subtitleStyle; style.OutlineSize+=0.5; a.applySubtitleStyle(style) }
 		})
-		ui.Row(c).Gap(7).Children(func() {
-			ui.Text(c, "POSITION").FontSize(8).TextColor(ui.Hex(auroraMuted))
-			if auroraQuietButton(c, "Up").Clicked() { style:=a.subtitleStyle; style.VerticalPosition-=2; a.applySubtitleStyle(style) }
-			ui.Text(c, fmt.Sprintf("%d", a.subtitleStyle.VerticalPosition)).FontSize(9).TextColor(ui.Hex(auroraText))
-			if auroraQuietButton(c, "Down").Clicked() { style:=a.subtitleStyle; style.VerticalPosition+=2; a.applySubtitleStyle(style) }
-			ui.Spacer(c)
-			ui.Text(c, "DELAY").FontSize(8).TextColor(ui.Hex(auroraMuted))
-			if auroraQuietButton(c, "−0.1s").Clicked() { a.adjustSubtitleDelay(-0.1) }
-			ui.Text(c, fmt.Sprintf("%+.1fs", a.subtitleDelay)).FontSize(9).TextColor(ui.Hex(auroraText))
-			if auroraQuietButton(c, "+0.1s").Clicked() { a.adjustSubtitleDelay(0.1) }
-			if auroraQuietButton(c, "Reset").Clicked() { a.resetSubtitleDelay() }
-		})
-		ui.Row(c).Gap(7).Children(func() {
-			if auroraQuietButton(c, "Next track").Clicked() { if tracks, ok := a.subtitle.(interface{ CycleSubtitleTrack() error }); ok { if err := tracks.CycleSubtitleTrack(); err != nil { a.status = err.Error() } else { a.status = "Subtitle track changed" } } }
-			if auroraQuietButton(c, "Remove external").Clicked() { if tracks, ok := a.subtitle.(interface{ RemoveSelectedExternalSubtitle() error }); ok { if err := tracks.RemoveSelectedExternalSubtitle(); err != nil { a.status = err.Error() } else { a.persistSubtitleAssignment("", "", true); a.status = "External subtitle removed" } } }
-			if auroraQuietButton(c, "Save for language").Clicked() { a.saveStyleForActiveLanguage() }
-		})
+
 		if len(a.subtitleCandidates) > 0 {
 			ui.Text(c, "MATCHING FILES").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
 			for _, candidate := range a.subtitleCandidates {
 				path := candidate
-				if auroraQuietButton(c, filepath.Base(path)).Clicked() {
-					if err := a.subtitle.LoadExternalSubtitle(path); err != nil { a.status = err.Error() } else {
+				item := auroraQuietButton(c, filepath.Base(path)).FillWidth().NoWrap().Ellipsis("…")
+				if item.Clicked() {
+					if err := a.subtitle.LoadExternalSubtitle(path); err != nil {
+						a.status = err.Error()
+					} else {
 						a.persistSubtitleAssignment(path, application.SubtitleLanguageFromFilename(a.path, path), false)
 						a.status = "Subtitle selected: " + filepath.Base(path)
 						a.subtitleCandidates = nil
@@ -163,28 +260,9 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 				}
 			}
 		}
-		textColor := subtitleColorFromMPV(a.subtitleStyle.TextColor)
-		previousTextColor := textColor
-		ui.Text(c, "TEXT COLOR").FontSize(8).TextColor(ui.Hex(auroraMuted))
-		ui.ColorWell(c, &textColor)
-		if textColor != previousTextColor {
-			style := a.subtitleStyle
-			style.TextColor = fmt.Sprintf("#FF%02X%02X%02X", textColor.R, textColor.G, textColor.B)
-			a.applySubtitleStyle(style)
-		}
-		outlineColor := subtitleColorFromMPV(a.subtitleStyle.OutlineColor)
-		previousOutlineColor := outlineColor
-		ui.Text(c, "OUTLINE COLOR").FontSize(8).TextColor(ui.Hex(auroraMuted))
-		ui.ColorWell(c, &outlineColor)
-		if outlineColor != previousOutlineColor {
-			style := a.subtitleStyle
-			style.OutlineColor = fmt.Sprintf("#FF%02X%02X%02X", outlineColor.R, outlineColor.G, outlineColor.B)
-			a.applySubtitleStyle(style)
-		}
 		ui.Text(c, "ASS/SSA and image-based subtitles may not support every appearance setting.").FontSize(8).TextColor(ui.Hex(auroraMuted))
 	})
 }
-
 
 func (a *App) saveStyleForActiveLanguage() {
 	language := application.NormalizeSubtitleLanguage(a.activeSubtitleLanguage)

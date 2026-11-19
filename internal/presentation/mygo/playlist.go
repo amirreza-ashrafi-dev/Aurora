@@ -91,6 +91,7 @@ func (a *App) addFiles(paths []string) {
 		a.state.Paused = false
 		a.status = "Playing: " + filepath.Base(a.path) + validationNote
 		a.offerResumeForCurrent()
+		a.restoreSubtitleForCurrent()
 		return
 	}
 
@@ -161,6 +162,7 @@ func (a *App) removePlaylistIndex(index int) {
 
 	a.status = fmt.Sprintf("Removed %q; playing %q",
 		filepath.Base(removedPath), filepath.Base(a.path))
+	a.restoreSubtitleForCurrent()
 }
 
 func (a *App) playPlaylistIndex(index int) {
@@ -182,6 +184,7 @@ func (a *App) playPlaylistIndex(index int) {
 	a.state.Paused = false
 	a.status = "Playing: " + filepath.Base(a.path)
 	a.offerResumeForCurrent()
+	a.restoreSubtitleForCurrent()
 }
 
 func (a *App) next() {

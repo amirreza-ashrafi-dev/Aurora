@@ -30,6 +30,7 @@ type App struct {
 	subtitlePrefs domain.SubtitlePreferences
 	subtitleStyle domain.SubtitleStyle
 	subtitleDelay float64
+	subtitleDisabled bool
 	subtitleMenuOpen bool
 	fullscreenSubtitleMenuOpen bool
 	subtitleFlyout *mygo.Window
@@ -125,6 +126,14 @@ func (a *App) onReady() {
 	if err := a.platform.InstallVideoDoubleClick(a.videoHWND, a.toggleFullscreen); err != nil {
 		a.status = "Double-click handler: " + err.Error()
 		log.Println(a.status)
+	}
+	if err := a.platform.InstallVideoFileDrop(a.videoHWND, func(paths []string) {
+		if a.win == nil || a.win.IsDestroyed() { return }
+		a.win.Update(func() {
+			if !a.win.IsDestroyed() { a.handleDroppedSubtitleFiles(paths) }
+		})
+	}); err != nil {
+		log.Printf("install video subtitle drop handler: %v", err)
 	}
 
 	if a.playerFactory != nil {

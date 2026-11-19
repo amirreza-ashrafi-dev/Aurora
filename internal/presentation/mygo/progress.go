@@ -140,8 +140,25 @@ func (a *App) progressSnapshot(now time.Time) (*domain.PlaybackProgress, bool) {
 }
 
 func (a *App) rememberProgress(record domain.PlaybackProgress) {
-	if a.historyRecords == nil { a.historyRecords = make(map[string]domain.PlaybackProgress) }
-	a.historyRecords[application.ProgressKey(record.MediaPath)] = record
+	if a.historyRecords == nil {
+		a.historyRecords = make(map[string]domain.PlaybackProgress)
+	}
+	key := application.ProgressKey(record.MediaPath)
+	if key == "" {
+		return
+	}
+	a.historyRecords[key] = record
+	// Keep the in-memory index bounded just like the persisted history.
+	for len(a.historyRecords) > 500 {
+		oldestKey := ""
+		var oldest time.Time
+		for candidate, item := range a.historyRecords {
+			if oldestKey == "" || item.LastUpdated.Before(oldest) {
+				oldestKey, oldest = candidate, item.LastUpdated
+			}
+		}
+		delete(a.historyRecords, oldestKey)
+	}
 }
 
 func (a *App) scheduleCurrentProgressSave() {
@@ -193,7 +210,12 @@ func (a *App) offerResumeForCurrent() {
 	a.state.Paused = true
 	a.status = "Choose whether to continue watching"
 	if a.win != nil && !a.win.IsDestroyed() { a.win.Invalidate() }
-	if a.fullscreen || a.cinematicMode { a.showController() }
+	if a.fullscreen || a.cinematicMode {
+		a.showController()
+		if a.controller != nil && !a.controller.IsDestroyed() {
+			a.controller.Invalidate()
+		}
+	}
 }
 
 func (a *App) chooseResume() {

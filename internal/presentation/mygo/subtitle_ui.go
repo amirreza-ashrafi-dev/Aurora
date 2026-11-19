@@ -43,6 +43,7 @@ func (a *App) chooseSubtitleFile() {
 			a.persistSubtitleAssignment(paths[0], application.SubtitleLanguageFromFilename(a.path, paths[0]), false)
 			a.status = "Subtitle loaded: " + filepath.Base(paths[0])
 			a.subtitleMenuOpen = false
+			a.fullscreenSubtitleMenuOpen = false
 			a.win.Invalidate()
 		})
 	}()

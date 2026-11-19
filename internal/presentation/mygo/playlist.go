@@ -77,6 +77,7 @@ func (a *App) addFiles(paths []string) {
 		}
 		a.playlist = append(a.playlist, valid[0])
 		a.path = valid[0]
+		a.resetSubtitleDelay()
 		a.playlistPos = 0
 		for _, path := range valid[1:] {
 			if err := a.player.Append(path); err != nil {
@@ -144,6 +145,7 @@ func (a *App) removePlaylistIndex(index int) {
 	}
 
 	a.path = a.playlist[nextCurrent]
+	a.resetSubtitleDelay()
 	a.state.Position = 0
 	a.state.Duration = 0
 	a.state.Paused = false
@@ -174,6 +176,7 @@ func (a *App) playPlaylistIndex(index int) {
 	}
 	a.playlistPos = index
 	a.path = a.playlist[index]
+	a.resetSubtitleDelay()
 	a.state.Position = 0
 	a.state.Duration = 0
 	a.state.Paused = false

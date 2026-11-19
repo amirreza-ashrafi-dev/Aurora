@@ -49,3 +49,17 @@ func TestSubtitleLanguageFromFilename(t *testing.T) {
 	if got := SubtitleLanguageFromFilename("Movie.mkv", "Movie.fa-IR.srt"); got != "fa-IR" { t.Fatalf("language = %q", got) }
 	if got := SubtitleLanguageFromFilename("Movie.mkv", "Other.en.srt"); got != "und" { t.Fatalf("unrelated file language = %q", got) }
 }
+
+
+func TestIsSubtitleFile(t *testing.T) {
+	for _, path := range []string{"movie.srt", "movie.ASS", "movie.ssa", "movie.vtt", "movie.sub", "movie.idx"} {
+		if !IsSubtitleFile(path) {
+			t.Errorf("IsSubtitleFile(%q) = false, want true", path)
+		}
+	}
+	for _, path := range []string{"movie.mp4", "movie.txt", "movie", "folder.srt"} {
+		if IsSubtitleFile(path) {
+			t.Errorf("IsSubtitleFile(%q) = true, want false", path)
+		}
+	}
+}

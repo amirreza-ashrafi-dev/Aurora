@@ -160,9 +160,7 @@ func (a *App) normalView(c *ui.Context) {
 					}
 				}
 				ui.Text(c, fmt.Sprintf("%.0f%%", a.state.Volume)).Width(38).FontSize(10).TextColor(ui.Hex(auroraText))
-				if auroraQuietButton(c, "CC Subtitles").Tooltip("Subtitle settings").Clicked() {
-					a.subtitleMenuOpen = !a.subtitleMenuOpen
-				}
+				a.subtitleStudioPopover(c, "CC Subtitles", &a.subtitleMenuOpen)
 				if auroraQuietButton(c, "◫").Tooltip("Cinematic mode (C)").Clicked() {
 					a.toggleCinematicMode()
 				}
@@ -170,7 +168,6 @@ func (a *App) normalView(c *ui.Context) {
 					a.toggleFullscreen()
 				}
 			})
-			if a.subtitleMenuOpen { a.subtitleStudioControls(c) }
 			ui.Text(c, "C  Cinematic     F / F11  Fullscreen     ESC  Exit mode     Double-click video  Fullscreen").Shrink(0).FontSize(8).TextColor(ui.Hex("#778194"))
 		})
 	})

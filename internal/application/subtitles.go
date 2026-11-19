@@ -3,6 +3,8 @@ package application
 import (
 	"errors"
 	"path/filepath"
+	"os"
+	"strings"
 	"sort"
 	"strings"
 
@@ -146,4 +148,37 @@ func MatchSubtitleFiles(videoPath string, candidates []string) []string {
 		return strings.ToLower(matches[i]) < strings.ToLower(matches[j])
 	})
 	return matches
+}
+
+
+// DiscoverSubtitleFiles scans only the video's own directory and accepts
+// strict basename matches. It never performs fuzzy matching across folders.
+func DiscoverSubtitleFiles(videoPath string) ([]string, error) {
+	dir := filepath.Dir(videoPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil { return nil, err }
+	candidates := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() { continue }
+		candidates = append(candidates, filepath.Join(dir, entry.Name()))
+	}
+	return MatchSubtitleFiles(videoPath, candidates), nil
+}
+
+// SubtitleLanguageFromFilename extracts a likely BCP-47 suffix from names
+// such as Movie.en.srt or Movie_pt-BR.ass. It returns "und" when absent.
+func SubtitleLanguageFromFilename(videoPath, subtitlePath string) string {
+	video := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
+	sub := strings.TrimSuffix(filepath.Base(subtitlePath), filepath.Ext(subtitlePath))
+	if len(sub) <= len(video) { return "und" }
+	if !strings.EqualFold(sub[:len(video)], video) { return "und" }
+	suffix := strings.TrimLeft(sub[len(video):], " ._-")
+	if suffix == "" { return "und" }
+	parts := strings.Split(suffix, ".")
+	candidate := parts[0]
+	if len(candidate) < 2 || len(candidate) > 8 { return "und" }
+	for _, r := range candidate {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-') { return "und" }
+	}
+	return NormalizeSubtitleLanguage(candidate)
 }

@@ -425,8 +425,7 @@ func (a *App) subtitleStudioFlyoutButton(c *ui.Context) {
 func (a *App) subtitleStudioFlyoutView(c *ui.Context) {
 	applyAuroraTheme(c)
 	c.Root().Background(ui.Hex(auroraPanel))
-	ui.Column(c).Fill().Background(ui.Hex(auroraPanel)).Radius(13).
-		Border(1, ui.Hex(auroraBorder)).Clip().Children(func() {
+	ui.Column(c).Fill().Background(ui.Hex(auroraPanel)).Children(func() {
 		ui.Scroll(c).Fill().Children(func() {
 			a.subtitleStudioControls(c)
 		})

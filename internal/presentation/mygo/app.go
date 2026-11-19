@@ -24,6 +24,9 @@ type App struct {
 	playerFactory application.PlayerFactory
 	subtitle application.SubtitlePlayer
 	subtitlePreferences application.SubtitlePreferencesRepository
+	subtitleAssignments application.SubtitleAssignmentRepository
+	subtitleAssignmentRecords map[string]domain.SubtitleAssignment
+	subtitleCandidates []string
 	subtitlePrefs domain.SubtitlePreferences
 	subtitleStyle domain.SubtitleStyle
 	subtitleDelay float64
@@ -67,12 +70,14 @@ type App struct {
 
 // New creates the presentation controller. The player is created later, after
 // MyGo has supplied the native window handle for the embedded MPV surface.
-func New(platform application.NativePlatform, playerFactory application.PlayerFactory, history application.ProgressRepository, subtitlePreferences application.SubtitlePreferencesRepository) *App {
+func New(platform application.NativePlatform, playerFactory application.PlayerFactory, history application.ProgressRepository, subtitlePreferences application.SubtitlePreferencesRepository, subtitleAssignments application.SubtitleAssignmentRepository) *App {
 	return &App{
 		platform:       platform,
 		playerFactory:  playerFactory,
 		history:        history,
 		subtitlePreferences: subtitlePreferences,
+		subtitleAssignments: subtitleAssignments,
+		subtitleAssignmentRecords: make(map[string]domain.SubtitleAssignment),
 		subtitlePrefs: domain.SubtitlePreferences{Global: domain.DefaultSubtitleStyle()},
 		subtitleStyle: domain.DefaultSubtitleStyle(),
 		historyRecords: make(map[string]domain.PlaybackProgress),
@@ -126,6 +131,11 @@ func (a *App) onReady() {
 			a.status = err.Error()
 		}
 		a.loadProgressHistory()
+		a.loadSubtitleAssignments()
+		a.win.OnFileDrop(func(event *mygo.FileDropEvent) {
+			if event == nil { return }
+			a.handleDroppedSubtitleFiles(event.Paths)
+		})
 		a.subtitle, _ = a.player.(application.SubtitlePlayer)
 		if a.subtitlePreferences != nil {
 			prefs, prefErr := a.subtitlePreferences.Load()

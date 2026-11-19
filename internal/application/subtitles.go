@@ -22,13 +22,13 @@ type SubtitlePlayer interface {
 // SubtitlePreferencesRepository persists global and per-language appearance.
 type SubtitlePreferencesRepository interface {
 	Load() (domain.SubtitlePreferences, error)
-	Save(domain.SubtitlePreferences) error
+	SavePreferences(domain.SubtitlePreferences) error
 }
 
 // SubtitleAssignmentRepository persists external subtitle choices per video.
 type SubtitleAssignmentRepository interface {
 	LoadAll() ([]domain.SubtitleAssignment, error)
-	Save(domain.SubtitleAssignment) error
+	SaveAssignment(domain.SubtitleAssignment) error
 	Delete(mediaPath string) error
 }
 
@@ -60,9 +60,18 @@ func NormalizeSubtitleLanguage(language string) string {
 func SubtitleStyleForLanguage(prefs domain.SubtitlePreferences, language string) domain.SubtitleStyle {
 	key := NormalizeSubtitleLanguage(language)
 	if key != "und" {
-		for _, profile := range prefs.Languages {
-			if NormalizeSubtitleLanguage(profile.Language) == key {
-				return profile.Style
+		// Prefer the most specific profile first, then progressively fall
+		// back to the base language (for example fa-IR -> fa).
+		candidates := []string{key}
+		for candidate := key; strings.Contains(candidate, "-"); {
+			candidate = candidate[:strings.LastIndex(candidate, "-")]
+			candidates = append(candidates, candidate)
+		}
+		for _, candidate := range candidates {
+			for _, profile := range prefs.Languages {
+				if NormalizeSubtitleLanguage(profile.Language) == candidate {
+					return profile.Style
+				}
 			}
 		}
 	}

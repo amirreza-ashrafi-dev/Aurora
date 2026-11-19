@@ -28,12 +28,27 @@ type SubtitlePreferences struct {
 	Languages []SubtitleLanguageProfile   `json:"languages,omitempty"`
 }
 
-// SubtitleAssignment records the user's external subtitle choice for one
-// media file. Embedded track IDs are session-local in many containers, so
-// they are not persisted as stable identifiers.
+// SubtitleTrack describes one subtitle track reported by the playback engine.
+// Track IDs are scoped to the owning media item and must never be reused for
+// a different playlist entry.
+type SubtitleTrack struct {
+	ID           int64
+	Title        string
+	Language     string
+	Codec        string
+	External     bool
+	ExternalPath string
+	Selected     bool
+}
+
+// SubtitleAssignment records the subtitle choice for one media file. An
+// external path takes precedence; otherwise TrackID identifies an embedded
+// track within this media item. Disabled explicitly remembers subtitles off.
 type SubtitleAssignment struct {
 	MediaPath       string    `json:"media_path"`
 	ExternalPath    string    `json:"external_path,omitempty"`
+	TrackID         int64     `json:"track_id,omitempty"`
+	HasTrackID      bool      `json:"has_track_id,omitempty"`
 	Language        string    `json:"language,omitempty"`
 	Disabled        bool      `json:"disabled,omitempty"`
 	UpdatedAt       time.Time `json:"updated_at"`

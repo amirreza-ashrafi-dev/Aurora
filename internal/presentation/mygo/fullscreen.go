@@ -67,11 +67,38 @@ func (a *App) updateControllerBounds() {
 		return
 	}
 	if a.hasControllerAnchor && anchor == a.controllerAnchor {
+		a.updateFullscreenSubtitleFlyoutAnchor()
 		return
 	}
 	log.Printf("[diag] updateControllerAnchor: old=%+v new=%+v", a.controllerAnchor, anchor)
 	a.controller.SetAnchor(anchor)
 	a.controllerAnchor, a.hasControllerAnchor = anchor, true
+	a.updateFullscreenSubtitleFlyoutAnchor()
+}
+
+func (a *App) updateFullscreenSubtitleFlyoutAnchor() {
+	if a == nil || a.win == nil || a.win.IsDestroyed() ||
+		a.controller == nil || a.controller.IsDestroyed() ||
+		a.fullscreenSubtitleFlyout == nil || a.fullscreenSubtitleFlyout.IsDestroyed() {
+		return
+	}
+	button := a.fullscreenSubtitleButtonBounds
+	if button.Width <= 0 || button.Height <= 0 {
+		return
+	}
+
+	controllerContent := a.controller.ContentBounds()
+	mainContent := a.win.ContentBounds()
+	anchor := mygo.Rectangle{
+		X:      controllerContent.X - mainContent.X + button.X,
+		Y:      controllerContent.Y - mainContent.Y + button.Y,
+		Width:  button.Width,
+		Height: button.Height,
+	}
+	if anchor != a.fullscreenSubtitleFlyoutAnchor {
+		a.fullscreenSubtitleFlyout.SetAnchor(anchor)
+		a.fullscreenSubtitleFlyoutAnchor = anchor
+	}
 }
 
 func (a *App) showController() {

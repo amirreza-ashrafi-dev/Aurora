@@ -72,6 +72,9 @@ func (a *App) setCinematicMode(enabled bool) {
 		return
 	}
 	a.cinematicMode = enabled
+	if enabled {
+		a.closeSubtitleFlyout()
+	}
 	a.videoLayoutFramePending = false
 	a.win.Invalidate()
 	if a.controller != nil && !a.controller.IsDestroyed() {

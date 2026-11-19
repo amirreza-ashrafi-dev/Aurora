@@ -33,8 +33,15 @@ const (
 type Platform struct {
 	dll        xwindows.Handle
 	comctl32   xwindows.Handle
+	shell32    xwindows.Handle
 	videoProc  uintptr
+	dropProc   uintptr
 	subclassID uintptr
+	dropSubclassID uintptr
+
+	dragAcceptFiles func(uintptr, int32)
+	dragQueryFileW func(uintptr, uint32, *uint16, uint32) uint32
+	dragFinish func(uintptr)
 
 	createWindowEx       func(uint32, uintptr, uintptr, uint32, int32, int32, int32, int32, uintptr, uintptr, uintptr, uintptr) uintptr
 	showWindow           func(uintptr, int32) int32
@@ -68,8 +75,14 @@ func New() (*Platform, error) {
 		xwindows.FreeLibrary(dll)
 		return nil, err
 	}
-	p := &Platform{dll: dll, comctl32: comctl, subclassID: 1}
-	h, ch := uintptr(dll), uintptr(comctl)
+	shell, err := xwindows.LoadLibrary("shell32.dll")
+	if err != nil {
+		xwindows.FreeLibrary(comctl)
+		xwindows.FreeLibrary(dll)
+		return nil, err
+	}
+	p := &Platform{dll: dll, comctl32: comctl, shell32: shell, subclassID: 1, dropSubclassID: 2}
+	h, ch, sh := uintptr(dll), uintptr(comctl), uintptr(shell)
 	purego.RegisterLibFunc(&p.createWindowEx, h, "CreateWindowExW")
 	purego.RegisterLibFunc(&p.showWindow, h, "ShowWindow")
 	purego.RegisterLibFunc(&p.updateWindow, h, "UpdateWindow")
@@ -89,6 +102,9 @@ func New() (*Platform, error) {
 	purego.RegisterLibFunc(&p.monitorFromWindow, h, "MonitorFromWindow")
 	purego.RegisterLibFunc(&p.getMonitorInfoW, h, "GetMonitorInfoW")
 	purego.RegisterLibFunc(&p.getDpiForWindow, h, "GetDpiForWindow")
+	purego.RegisterLibFunc(&p.dragAcceptFiles, sh, "DragAcceptFiles")
+	purego.RegisterLibFunc(&p.dragQueryFileW, sh, "DragQueryFileW")
+	purego.RegisterLibFunc(&p.dragFinish, sh, "DragFinish")
 	return p, nil
 }
 
@@ -127,6 +143,48 @@ func (p *Platform) InstallVideoDoubleClick(hwnd uintptr, onDoubleClick func()) e
 		return fmt.Errorf("SetWindowSubclass failed")
 	}
 	p.videoProc = callback
+	return nil
+}
+
+// InstallVideoFileDrop enables shell file drops on the embedded video HWND.
+// The callback is retained by Platform until RemoveVideoSubclass is called.
+func (p *Platform) InstallVideoFileDrop(hwnd uintptr, onDrop func([]string)) error {
+	if hwnd == 0 {
+		return fmt.Errorf("video window is not initialized")
+	}
+	if p.dropProc != 0 {
+		return fmt.Errorf("video file-drop handler is already installed")
+	}
+	const wmDropFiles uint32 = 0x0233
+	callback := purego.NewCallback(func(window uintptr, message uint32, wParam uintptr, lParam uintptr, subclassID uintptr, refData uintptr) uintptr {
+		if message != wmDropFiles {
+			return p.defSubclassProc(window, message, wParam, lParam)
+		}
+		drop := wParam
+		count := p.dragQueryFileW(drop, ^uint32(0), nil, 0)
+		paths := make([]string, 0, count)
+		for i := uint32(0); i < count; i++ {
+			length := p.dragQueryFileW(drop, i, nil, 0)
+			if length == 0 {
+				continue
+			}
+			buffer := make([]uint16, length+1)
+			if p.dragQueryFileW(drop, i, &buffer[0], uint32(len(buffer))) != 0 {
+				paths = append(paths, xwindows.UTF16ToString(buffer))
+			}
+		}
+		p.dragFinish(drop)
+		if onDrop != nil && len(paths) > 0 {
+			onDrop(paths)
+		}
+		return 0
+	})
+	p.dragAcceptFiles(hwnd, 1)
+	if p.setWindowSubclass(hwnd, callback, p.dropSubclassID, 0) == 0 {
+		p.dragAcceptFiles(hwnd, 0)
+		return fmt.Errorf("SetWindowSubclass for file drops failed")
+	}
+	p.dropProc = callback
 	return nil
 }
 
@@ -204,11 +262,18 @@ func (p *Platform) RevealChild(hwnd uintptr) error {
 }
 
 func (p *Platform) RemoveVideoSubclass(hwnd uintptr) {
-	if p == nil || hwnd == 0 || p.videoProc == 0 {
+	if p == nil || hwnd == 0 {
 		return
 	}
-	p.removeWindowSubclass(hwnd, p.videoProc, p.subclassID)
-	p.videoProc = 0
+	if p.videoProc != 0 {
+		p.removeWindowSubclass(hwnd, p.videoProc, p.subclassID)
+		p.videoProc = 0
+	}
+	if p.dropProc != 0 {
+		p.removeWindowSubclass(hwnd, p.dropProc, p.dropSubclassID)
+		p.dragAcceptFiles(hwnd, 0)
+		p.dropProc = 0
+	}
 }
 
 func (p *Platform) LogHWND(label string, hwnd uintptr) {
@@ -267,6 +332,10 @@ func (p *Platform) Close() {
 	if p.comctl32 != 0 {
 		xwindows.FreeLibrary(p.comctl32)
 		p.comctl32 = 0
+	}
+	if p.shell32 != 0 {
+		xwindows.FreeLibrary(p.shell32)
+		p.shell32 = 0
 	}
 	if p.dll != 0 {
 		xwindows.FreeLibrary(p.dll)

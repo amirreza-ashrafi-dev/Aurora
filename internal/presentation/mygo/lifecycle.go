@@ -4,6 +4,8 @@ package presentation
 // the MyGo event loop has returned, even after partial initialization.
 func (a *App) Close() {
 	a.closeOnce.Do(func() {
+		a.closeSubtitleFlyout()
+		a.closeFullscreenSubtitleFlyout()
 		a.stopControllerMonitor()
 		a.stopPolling()
 		a.saveCurrentProgressImmediately()

@@ -91,6 +91,9 @@ func (a *App) registerShortcuts(c *ui.Context) {
 	c.OnWindowShortcut(0, ui.KeyF, a.toggleFullscreen)
 	c.OnWindowShortcut(0, ui.KeyF11, a.toggleFullscreen)
 	c.OnWindowShortcut(ui.Alt, ui.KeyEnter, a.toggleFullscreen)
+	c.OnWindowShortcut(ui.Alt, ui.KeyLeft, func() { a.adjustSubtitleDelay(-0.1) })
+	c.OnWindowShortcut(ui.Alt, ui.KeyRight, func() { a.adjustSubtitleDelay(0.1) })
+	c.OnWindowShortcut(ui.Alt, ui.KeyBackspace, func() { a.resetSubtitleDelay() })
 	c.OnWindowShortcut(0, ui.KeyC, a.toggleCinematicMode)
 	c.OnWindowShortcut(0, ui.KeyEscape, func() {
 		if a.cinematicMode {

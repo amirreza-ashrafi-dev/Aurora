@@ -37,6 +37,9 @@ type NativePlatform interface {
 	RevealChild(hwnd uintptr) error
 	DestroyWindow(hwnd uintptr) int32
 	RemoveVideoSubclass(hwnd uintptr)
+	WatchOutsideClickDismiss(popupHWND, anchorWindow uintptr, anchor domain.Rect, onOutside func()) error
+	UpdateOutsideClickDismissAnchor(anchorWindow uintptr, anchor domain.Rect)
+	StopOutsideClickDismiss()
 	LogHWND(label string, hwnd uintptr)
 	Close()
 }

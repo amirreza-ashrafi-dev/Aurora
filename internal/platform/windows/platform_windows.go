@@ -56,6 +56,7 @@ type Platform struct {
 	getMonitorInfoW      func(uintptr, *monitorInfo) int32
 	getDpiForWindow      func(uintptr) uint32
 	clientToScreen      func(uintptr, *domain.Point) int32
+	getModuleHandle     func(uintptr) uintptr
 	setWindowsHookEx    func(int32, uintptr, uintptr, uint32) uintptr
 	unhookWindowsHookEx func(uintptr) int32
 	callNextHookEx      func(uintptr, int32, uintptr, uintptr) uintptr
@@ -104,6 +105,7 @@ func New() (*Platform, error) {
 	purego.RegisterLibFunc(&p.getMonitorInfoW, h, "GetMonitorInfoW")
 	purego.RegisterLibFunc(&p.getDpiForWindow, h, "GetDpiForWindow")
 	purego.RegisterLibFunc(&p.clientToScreen, h, "ClientToScreen")
+	purego.RegisterLibFunc(&p.getModuleHandle, h, "GetModuleHandleW")
 	purego.RegisterLibFunc(&p.setWindowsHookEx, h, "SetWindowsHookExW")
 	purego.RegisterLibFunc(&p.unhookWindowsHookEx, h, "UnhookWindowsHookEx")
 	purego.RegisterLibFunc(&p.callNextHookEx, h, "CallNextHookEx")
@@ -194,7 +196,10 @@ func (p *Platform) WatchOutsideClickDismiss(popupHWND, anchorWindow uintptr, anc
 		return 0
 	}
 	p.mouseHookProc = purego.NewCallback(p.mouseHookFunc)
-	p.mouseHook = p.setWindowsHookEx(whMouseLL, p.mouseHookProc, 0, 0)
+	// A zero thread ID requests a desktop-wide low-level mouse hook;
+	// pass the current executable module containing the Go callback.
+	module := p.getModuleHandle(0)
+	p.mouseHook = p.setWindowsHookEx(whMouseLL, p.mouseHookProc, module, 0)
 	if p.mouseHook == 0 {
 		p.onOutsideClick = nil
 		p.mouseHookFunc = nil

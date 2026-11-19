@@ -371,6 +371,8 @@ func (a *App) subtitleStudioFlyoutButton(c *ui.Context) {
 	a.subtitleStudioFlyoutButtonAt(
 		c,
 		a.win,
+		a.win,
+		nil,
 		&a.subtitleFlyout,
 		&a.subtitleMenuOpen,
 		&a.subtitleButtonHandle,
@@ -382,6 +384,8 @@ func (a *App) fullscreenSubtitleStudioFlyoutButton(c *ui.Context) {
 	a.subtitleStudioFlyoutButtonAt(
 		c,
 		a.controller,
+		a.win,
+		&a.fullscreenSubtitleButtonBounds,
 		&a.fullscreenSubtitleFlyout,
 		&a.fullscreenSubtitleMenuOpen,
 		&a.fullscreenSubtitleButtonHandle,
@@ -391,7 +395,9 @@ func (a *App) fullscreenSubtitleStudioFlyoutButton(c *ui.Context) {
 
 func (a *App) subtitleStudioFlyoutButtonAt(
 	c *ui.Context,
-	parent *mygo.Window,
+	buttonWindow *mygo.Window,
+	flyoutParent *mygo.Window,
+	buttonBoundsRef *mygo.Rectangle,
 	flyoutRef **mygo.Window,
 	open *bool,
 	buttonHandle *ui.Handle,
@@ -409,22 +415,35 @@ func (a *App) subtitleStudioFlyoutButtonAt(
 		*open = true
 	}
 
-	if !*open || parent == nil || parent.IsDestroyed() {
+	if !*open || buttonWindow == nil || buttonWindow.IsDestroyed() ||
+		flyoutParent == nil || flyoutParent.IsDestroyed() {
 		return
 	}
 
-	// Anchor to the actual button in this window. MyGo places the native
-	// flyout within the display work area, flipping or shrinking it when
-	// there is not enough room above or beside the controller.
+	// Read the button's committed geometry in the window that contains it.
+	// In fullscreen/cinematic mode, express that geometry in the main
+	// player's content coordinates: the popup is a sibling of the controller
+	// so Windows can place it against the monitor work area, not the short
+	// controller window.
 	bounds := buttonHandle.Bounds(c)
 	if bounds.W <= 0 || bounds.H <= 0 {
 		return
 	}
-	anchor := mygo.Rectangle{
+	buttonRect := mygo.Rectangle{
 		X:      int(bounds.X),
 		Y:      int(bounds.Y),
 		Width:  max(1, int(bounds.W+0.5)),
 		Height: max(1, int(bounds.H+0.5)),
+	}
+	anchor := buttonRect
+	if buttonWindow != flyoutParent {
+		if buttonBoundsRef != nil {
+			*buttonBoundsRef = buttonRect
+		}
+		buttonContent := buttonWindow.ContentBounds()
+		parentContent := flyoutParent.ContentBounds()
+		anchor.X += buttonContent.X - parentContent.X
+		anchor.Y += buttonContent.Y - parentContent.Y
 	}
 
 	if *flyoutRef != nil && !(*flyoutRef).IsDestroyed() {
@@ -436,12 +455,12 @@ func (a *App) subtitleStudioFlyoutButtonAt(
 	}
 
 	flyout := mygo.NewFlyout(mygo.FlyoutOptions{
-		Parent:    parent,
+		Parent:    flyoutParent,
 		Anchor:    anchor,
 		Placement: mygo.PlacementTopEnd,
 		Gap:       8,
 		Width:     440,
-		Height:    620,
+		Height:    500,
 		Focusable: true,
 		Hidden:    true,
 		Shadow:    true,

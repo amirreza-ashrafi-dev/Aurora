@@ -154,6 +154,13 @@ func (p *Player) PlayIndex(index int) error {
 	return p.commandArgs("playlist-play-index", strconv.Itoa(index))
 }
 
+func (p *Player) RemovePlaylistItem(index int) error {
+	if index < 0 {
+		return fmt.Errorf("playlist index cannot be negative")
+	}
+	return p.commandArgs("playlist-remove", strconv.Itoa(index))
+}
+
 func (p *Player) GetDouble(name string) (float64, error) {
 	if p == nil || p.ctx == nil {
 		return 0, fmt.Errorf("mpv is not initialized")

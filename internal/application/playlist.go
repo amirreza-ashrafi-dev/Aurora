@@ -91,3 +91,39 @@ func mediaPathKey(path string) string {
 	}
 	return key
 }
+
+
+// RemovePlaylistEntry returns a copy of queue without removeIndex and the
+// resulting current index. If the current entry is removed, the next entry is
+// selected; when the removed entry was last, the new final entry is selected.
+func RemovePlaylistEntry(queue []string, currentIndex, removeIndex int) ([]string, int, bool) {
+	if removeIndex < 0 || removeIndex >= len(queue) {
+		return queue, currentIndex, false
+	}
+
+	updated := make([]string, 0, len(queue)-1)
+	updated = append(updated, queue[:removeIndex]...)
+	updated = append(updated, queue[removeIndex+1:]...)
+
+	removedCurrent := removeIndex == currentIndex
+	if len(updated) == 0 {
+		return updated, 0, removedCurrent
+	}
+
+	if removedCurrent {
+		currentIndex = removeIndex
+		if currentIndex >= len(updated) {
+			currentIndex = len(updated) - 1
+		}
+	} else if removeIndex < currentIndex {
+		currentIndex--
+	}
+
+	if currentIndex < 0 {
+		currentIndex = 0
+	}
+	if currentIndex >= len(updated) {
+		currentIndex = len(updated) - 1
+	}
+	return updated, currentIndex, removedCurrent
+}

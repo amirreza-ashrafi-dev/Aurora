@@ -35,7 +35,8 @@ type App struct {
 	status      string
 	state       domain.PlaybackState
 	scrubbing   bool
-	fullscreen  bool
+	fullscreen     bool
+	cinematicMode bool
 
 	pollStop       chan struct{}
 	pollDone       chan struct{}
@@ -138,8 +139,10 @@ func (a *App) onReady() {
 	})
 	a.win.OnLeaveFullScreen(func() {
 		a.fullscreen = false
-		a.setFullscreenCursorHidden(false)
-		a.hideController()
+		if !a.cinematicMode {
+			a.setFullscreenCursorHidden(false)
+			a.hideController()
+		}
 		a.videoLayoutFramePending = false
 		a.win.Invalidate()
 		a.layoutVideo()

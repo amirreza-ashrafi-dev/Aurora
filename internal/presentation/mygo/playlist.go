@@ -106,6 +106,56 @@ func (a *App) addFiles(paths []string) {
 	}
 }
 
+func (a *App) removePlaylistIndex(index int) {
+	if a.player == nil || index < 0 || index >= len(a.playlist) {
+		return
+	}
+
+	removedPath := a.playlist[index]
+	if err := a.player.RemovePlaylistItem(index); err != nil {
+		a.status = "Remove from queue: " + err.Error()
+		return
+	}
+
+	updated, nextCurrent, removedCurrent := application.RemovePlaylistEntry(
+		a.playlist, a.playlistPos, index,
+	)
+	a.playlist = updated
+	a.playlistPos = nextCurrent
+
+	if !removedCurrent {
+		a.status = fmt.Sprintf("Removed %q from queue", filepath.Base(removedPath))
+		return
+	}
+
+	if len(a.playlist) == 0 {
+		a.path = ""
+		a.state.Position = 0
+		a.state.Duration = 0
+		a.state.Paused = true
+		a.status = "Queue is empty"
+		a.hideVideoHost()
+		return
+	}
+
+	a.path = a.playlist[nextCurrent]
+	a.state.Position = 0
+	a.state.Duration = 0
+	a.state.Paused = false
+
+	// Explicitly select the resulting current item after removing the
+	// playing entry. This keeps Aurora's selected index and mpv in sync,
+	// regardless of mpv's automatic playlist advancement behavior.
+	if err := a.player.PlayIndex(nextCurrent); err != nil {
+		a.status = fmt.Sprintf("Removed %q; could not start %q: %v",
+			filepath.Base(removedPath), filepath.Base(a.path), err)
+		return
+	}
+
+	a.status = fmt.Sprintf("Removed %q; playing %q",
+		filepath.Base(removedPath), filepath.Base(a.path))
+}
+
 func (a *App) playPlaylistIndex(index int) {
 	if a.player == nil || index < 0 || index >= len(a.playlist) {
 		return

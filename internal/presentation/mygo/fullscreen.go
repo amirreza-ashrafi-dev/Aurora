@@ -109,7 +109,7 @@ func (a *App) startControllerMonitor() {
 		var lastPoint domain.Point
 		haveLastPoint := false
 		var lastActivity, lastMouseMovement time.Time
-		wasFullscreen, visible := false, false
+		wasOverlayActive, visible := false, false
 		const hideDelay = 3 * time.Second
 		for {
 			select {
@@ -120,18 +120,20 @@ func (a *App) startControllerMonitor() {
 					if a.win == nil || a.win.IsDestroyed() {
 						return
 					}
-					fullscreen := a.win.IsFullScreen()
-					if !fullscreen {
-						if a.controller != nil && !a.controller.IsDestroyed() && visible {
+
+					overlayActive := a.win.IsFullScreen() || a.cinematicMode
+					if !overlayActive {
+						if visible {
 							a.hideController()
 						}
 						visible = false
 						a.setFullscreenCursorHidden(false)
-						wasFullscreen = false
+						wasOverlayActive = false
 						haveLastPoint = false
 						lastMouseMovement = time.Time{}
 						return
 					}
+
 					if a.controller == nil || a.controller.IsDestroyed() {
 						a.createFullscreenController()
 					}
@@ -140,16 +142,23 @@ func (a *App) startControllerMonitor() {
 						return
 					}
 					a.updateControllerBounds()
-					if !wasFullscreen {
+					if !wasOverlayActive {
 						a.showController()
 						visible = true
 						now := time.Now()
 						lastActivity, lastMouseMovement = now, now
 						haveLastPoint = false
-						wasFullscreen = true
+						wasOverlayActive = true
 					}
+
+					// Fullscreen callbacks can show the flyout while Cinematic Mode
+					// is already active. Reconcile local monitor state with the
+					// actual window visibility before applying the hide timeout.
+					visible = a.controller.IsVisible()
+
 					insideMain, point := a.platform.CursorInsideWindow(a.win.NativeHandle())
-					if !insideMain {
+					insideController, _ := a.platform.CursorInsideWindow(a.controller.NativeHandle())
+					if !insideMain && !insideController {
 						if visible {
 							a.hideController()
 							visible = false
@@ -159,14 +168,17 @@ func (a *App) startControllerMonitor() {
 						haveLastPoint = false
 						return
 					}
-					insideController, _ := a.platform.CursorInsideWindow(a.controller.NativeHandle())
+
 					if insideController {
 						if !visible {
 							a.showController()
 							visible = true
 						}
-						lastActivity = time.Now()
+						now := time.Now()
+						lastActivity, lastMouseMovement = now, now
+						a.setFullscreenCursorHidden(false)
 					}
+
 					moved := !haveLastPoint || point.X != lastPoint.X || point.Y != lastPoint.Y
 					if moved {
 						now := time.Now()

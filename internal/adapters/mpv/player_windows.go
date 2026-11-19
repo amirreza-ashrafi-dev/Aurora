@@ -167,6 +167,15 @@ func (p *Player) RemovePlaylistItem(index int) error {
 	return p.commandArgs("playlist-remove", strconv.Itoa(index))
 }
 
+func (p *Player) getInt64(name string) (int64, error) {
+	if p == nil || p.ctx == nil { return 0, fmt.Errorf("mpv is not initialized") }
+	var value int64
+	code := p.getProperty(p.ctx, name, 4, unsafe.Pointer(&value))
+	runtime.KeepAlive(&value)
+	if code < 0 { return 0, fmt.Errorf("get property %q failed: %s", name, mpvErrorText(p.errorString(code))) }
+	return value, nil
+}
+
 func (p *Player) GetDouble(name string) (float64, error) {
 	if p == nil || p.ctx == nil {
 		return 0, fmt.Errorf("mpv is not initialized")
@@ -269,10 +278,10 @@ func (p *Player) LoadExternalSubtitle(path string) error {
 func (p *Player) CycleSubtitleTrack() error { return p.commandArgs("cycle", "sid") }
 
 func (p *Player) RemoveSelectedExternalSubtitle() error {
-	id, err := p.GetDouble("sid")
+	id, err := p.getInt64("sid")
 	if err != nil { return err }
 	if id < 0 { return fmt.Errorf("no subtitle track is selected") }
-	external, err := p.getPropertyStringValue(fmt.Sprintf("track-list/%d/external", int64(id)))
+	external, err := p.getPropertyStringValue(fmt.Sprintf("track-list/%d/external", id))
 	if err != nil || external != "yes" { return fmt.Errorf("the selected subtitle is not an external track") }
 	return p.commandArgs("sub-remove", strconv.FormatInt(int64(id), 10))
 }

@@ -231,7 +231,13 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 					if err := tracks.RemoveSelectedExternalSubtitle(); err != nil {
 						a.status = err.Error()
 					} else {
-						a.persistSubtitleAssignment("", "", true)
+						if a.subtitleAssignments != nil {
+							if err := a.subtitleAssignments.Delete(a.path); err != nil {
+								a.status = "Clear subtitle assignment: " + err.Error()
+							}
+						}
+						delete(a.subtitleAssignmentRecords, subtitlePathKey(a.path))
+						a.subtitleDisabled = false
 						a.status = "External subtitle removed"
 					}
 				}
@@ -297,6 +303,11 @@ func (a *App) persistSubtitleAssignment(externalPath, language string, disabled 
 func (a *App) restoreSubtitleForCurrent() {
 	if a.subtitle == nil || a.path == "" { return }
 	a.subtitleDisabled = false
+	// Visibility is a per-player property, so explicitly reset it when moving
+	// to a media item that has no saved disabled state.
+	if err := a.subtitle.SetSubtitleVisibility(true); err != nil {
+		a.status = "Reset subtitle visibility: " + err.Error()
+	}
 	key := subtitlePathKey(a.path)
 	record, found := a.subtitleAssignmentRecords[key]
 	if !found {

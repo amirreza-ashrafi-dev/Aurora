@@ -32,6 +32,9 @@ type App struct {
 	subtitleDelay float64
 	subtitleMenuOpen bool
 	fullscreenSubtitleMenuOpen bool
+	subtitleFlyout *mygo.Window
+	subtitleButtonHandle ui.Handle
+	subtitleFlyoutAnchor mygo.Rectangle
 	colorPickerOpen bool
 	activeSubtitleLanguage string
 	history        application.ProgressRepository
@@ -178,6 +181,7 @@ func (a *App) onReady() {
 	})
 	a.win.OnEnterFullScreen(func() {
 		a.fullscreen = true
+		a.closeSubtitleFlyout()
 		a.setFullscreenCursorHidden(false)
 		a.layoutVideo()
 		a.updateControllerBounds()

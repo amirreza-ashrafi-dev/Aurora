@@ -96,7 +96,7 @@ func (a *App) resetSubtitleDelay() {
 }
 
 func (a *App) subtitleStudioControls(c *ui.Context) {
-	ui.Column(c).FillWidth().Padding(10).Gap(7).Background(ui.Hex("#171D28")).Border(1, ui.Hex(auroraBorder)).Radius(11).Children(func() {
+	ui.Column(c).FillWidth().Padding(14).Gap(10).Children(func() {
 		ui.Row(c).Gap(8).Children(func() {
 			ui.Text(c, "SUBTITLE STUDIO").FontSize(10).Bold().LetterSpacing(1).TextColor(ui.Hex(auroraText))
 			ui.Spacer(c)
@@ -268,4 +268,20 @@ func subtitleColorFromMPV(value string) ui.Color {
 	var r, g, b uint8
 	if _, err := fmt.Sscanf(value, "%02X%02X%02X", &r, &g, &b); err != nil { return ui.Hex("#FFFFFF") }
 	return ui.Color{R: r, G: g, B: b, A: 255}
+}
+
+func (a *App) subtitleStudioPopover(c *ui.Context, label string, open *bool) {
+	anchor := auroraQuietButton(c, label).Tooltip("Subtitle settings")
+	if anchor.Clicked() {
+		*open = !*open
+	}
+	ui.PopoverBase(c, anchor, open, func(panel ui.Element) {
+		panel.Width(440).
+			Margin(6, 0, 0, 0).
+			Padding(0).
+			Radius(13).
+			Background(ui.Hex(auroraPanel)).
+			Border(1, ui.Hex(auroraBorder))
+		a.subtitleStudioControls(c)
+	})
 }

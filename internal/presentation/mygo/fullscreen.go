@@ -12,7 +12,7 @@ import (
 
 const (
 	controllerWidth  = 820
-	controllerHeight = 240
+	controllerHeight = 190
 	controllerBottom = 24
 )
 
@@ -159,7 +159,7 @@ func (a *App) startControllerMonitor() {
 					insideMain, point := a.platform.CursorInsideWindow(a.win.NativeHandle())
 					insideController, _ := a.platform.CursorInsideWindow(a.controller.NativeHandle())
 					if !insideMain && !insideController {
-						if visible && a.pendingResume == nil {
+						if visible {
 							a.hideController()
 							visible = false
 						}
@@ -189,7 +189,7 @@ func (a *App) startControllerMonitor() {
 							visible = true
 						}
 					}
-					if visible && a.pendingResume == nil && !insideController && time.Since(lastActivity) >= hideDelay {
+					if visible && !insideController && time.Since(lastActivity) >= hideDelay {
 						a.hideController()
 						visible = false
 					}

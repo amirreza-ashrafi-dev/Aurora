@@ -29,17 +29,11 @@ func (a *App) startPolling() {
 					if a.win.IsDestroyed() {
 						return
 					}
-					if !a.scrubbing && posErr == nil {
-						a.state.Position = position
-					}
-					if durErr == nil && duration > 0 {
-						a.state.Duration = duration
-					}
+					// Detect automatic queue advancement before applying MPV's
+					// newly reported time-pos to the outgoing item's state.
 					if playlistErr == nil && playlistPos >= 0 {
 						index := int(playlistPos)
 						if index >= 0 && index < len(a.playlist) && index != a.playlistPos {
-							// MPV advanced the queue automatically: preserve the
-							// outgoing item but do not interrupt autoplay with a prompt.
 							a.saveCurrentProgressImmediately()
 							a.pendingResume = nil
 							a.playlistPos = index
@@ -49,6 +43,12 @@ func (a *App) startPolling() {
 							a.state.Paused = false
 							a.status = "Playing: " + filepath.Base(a.path)
 						}
+					}
+					if !a.scrubbing && posErr == nil {
+						a.state.Position = position
+					}
+					if durErr == nil && duration > 0 {
+						a.state.Duration = duration
 					}
 					now := time.Now()
 					if !a.state.Paused && !a.scrubbing && now.Sub(lastProgressSample) >= 5*time.Second {

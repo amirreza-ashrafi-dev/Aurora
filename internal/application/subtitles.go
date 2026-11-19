@@ -14,7 +14,7 @@ import (
 // Player avoids making subtitle operations mandatory for unrelated players.
 type SubtitlePlayer interface {
 	LoadExternalSubtitle(path string) error
-	DisableSubtitles() error
+	SetSubtitleVisibility(visible bool) error
 	SetSubtitleDelay(seconds float64) error
 	SetSubtitleStyle(style domain.SubtitleStyle) error
 	ActiveSubtitleLanguage() (string, error)
@@ -119,6 +119,17 @@ func validSubtitleColor(value string) bool {
 	return true
 }
 
+// IsSubtitleFile reports whether a path uses a subtitle format supported by
+// Aurora's external-subtitle picker and drag-and-drop workflow.
+func IsSubtitleFile(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".srt", ".ass", ".ssa", ".vtt", ".sub", ".idx":
+		return true
+	default:
+		return false
+	}
+}
+
 // MatchSubtitleFiles returns subtitle files whose filename stem belongs to
 // the video. It prefers exact basename matches and then language-suffixed
 // forms such as Movie.en.srt. It deliberately avoids fuzzy matching.
@@ -127,8 +138,7 @@ func MatchSubtitleFiles(videoPath string, candidates []string) []string {
 	videoKey := strings.ToLower(videoName)
 	matches := make([]string, 0)
 	for _, candidate := range candidates {
-		ext := strings.ToLower(filepath.Ext(candidate))
-		if ext != ".srt" && ext != ".ass" && ext != ".ssa" && ext != ".vtt" && ext != ".sub" {
+		if !IsSubtitleFile(candidate) {
 			continue
 		}
 		stem := strings.TrimSuffix(filepath.Base(candidate), filepath.Ext(candidate))

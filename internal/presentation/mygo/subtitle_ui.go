@@ -149,6 +149,29 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 			if auroraQuietButton(c, "Remove external").Clicked() { if a.subtitle != nil { a.status = "Remove an external subtitle after selecting it is not available for this track yet" } }
 			if auroraQuietButton(c, "Save for language").Clicked() { a.saveStyleForActiveLanguage() }
 		})
+		if len(a.subtitleCandidates) > 0 {
+			ui.Text(c, "MATCHING FILES").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+			for _, candidate := range a.subtitleCandidates {
+				path := candidate
+				if auroraQuietButton(c, filepath.Base(path)).Clicked() {
+					if err := a.subtitle.LoadExternalSubtitle(path); err != nil { a.status = err.Error() } else {
+						a.persistSubtitleAssignment(path, application.SubtitleLanguageFromFilename(a.path, path), false)
+						a.status = "Subtitle selected: " + filepath.Base(path)
+						a.subtitleCandidates = nil
+					}
+				}
+			}
+		}
+		textColor := ui.Hex("#FFFFFF")
+		if auroraQuietButton(c, "Text color").Clicked() { a.colorPickerOpen = !a.colorPickerOpen }
+		if a.colorPickerOpen {
+			ui.ColorWell(c, &textColor)
+			if textColor != ui.Hex("#FFFFFF") {
+				style := a.subtitleStyle
+				style.TextColor = fmt.Sprintf("#FF%02X%02X%02X", textColor.R, textColor.G, textColor.B)
+				a.applySubtitleStyle(style)
+			}
+		}
 		ui.Text(c, "ASS/SSA and image-based subtitles may not support every appearance setting.").FontSize(8).TextColor(ui.Hex(auroraMuted))
 	})
 }

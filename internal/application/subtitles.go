@@ -2,9 +2,8 @@ package application
 
 import (
 	"errors"
-	"path/filepath"
 	"os"
-	"strings"
+	"path/filepath"
 	"sort"
 	"strings"
 

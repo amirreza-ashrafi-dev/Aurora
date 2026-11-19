@@ -184,12 +184,6 @@ func (a *App) onReady() {
 		a.updateControllerBounds()
 		a.logDiagnostics("move")
 	})
-	a.win.OnBlur(func() {
-		// A non-focusable subtitle flyout stays open while its owner is
-		// active; dismiss it when the app loses activation to another app.
-		a.closeSubtitleFlyout()
-		a.closeFullscreenSubtitleFlyout()
-	})
 	a.win.OnEnterFullScreen(func() {
 		a.fullscreen = true
 		a.closeSubtitleFlyout()

@@ -143,15 +143,13 @@ func (a *App) removePlaylistIndex(index int) {
 	a.state.Duration = 0
 	a.state.Paused = false
 
-	// mpv automatically starts the next entry when the current entry is
-	// removed. If the removed item was last, explicitly start the new final
-	// entry because there is no next item.
-	if index >= len(a.playlist) {
-		if err := a.player.PlayIndex(nextCurrent); err != nil {
-			a.status = fmt.Sprintf("Removed %q; could not start %q: %v",
-				filepath.Base(removedPath), filepath.Base(a.path), err)
-			return
-		}
+	// Explicitly select the resulting current item after removing the
+	// playing entry. This keeps Aurora's selected index and mpv in sync,
+	// regardless of mpv's automatic playlist advancement behavior.
+	if err := a.player.PlayIndex(nextCurrent); err != nil {
+		a.status = fmt.Sprintf("Removed %q; could not start %q: %v",
+			filepath.Base(removedPath), filepath.Base(a.path), err)
+		return
 	}
 
 	a.status = fmt.Sprintf("Removed %q; playing %q",

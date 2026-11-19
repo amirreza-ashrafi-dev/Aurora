@@ -36,7 +36,7 @@ func (a *App) chooseSubtitleFile() {
 		}
 		if len(paths) == 0 || a.win == nil || a.win.IsDestroyed() { return }
 		a.win.Update(func() {
-			if err := a.subtitle.LoadExternalSubtitle(paths[0]); err != nil {
+			if err := a.loadExternalSubtitle(paths[0]); err != nil {
 				a.status = "Load subtitle: " + err.Error()
 				return
 			}
@@ -104,13 +104,10 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 			if auroraQuietButton(c, "Load file…").Clicked() {
 				a.chooseSubtitleFile()
 			}
-			if auroraQuietButton(c, "Disable").Clicked() && a.subtitle != nil {
-				if err := a.subtitle.DisableSubtitles(); err != nil {
-					a.status = err.Error()
-				} else {
-					a.persistSubtitleAssignment("", "", true)
-					a.status = "Subtitles disabled"
-				}
+			toggleLabel := "Disable"
+			if a.subtitleDisabled { toggleLabel = "Enable" }
+			if auroraQuietButton(c, toggleLabel).Clicked() {
+				a.toggleSubtitleVisibility()
 			}
 		})
 
@@ -250,7 +247,7 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 				path := candidate
 				item := auroraQuietButton(c, filepath.Base(path)).FillWidth().NoWrap().Ellipsis("…")
 				if item.Clicked() {
-					if err := a.subtitle.LoadExternalSubtitle(path); err != nil {
+					if err := a.loadExternalSubtitle(path); err != nil {
 						a.status = err.Error()
 					} else {
 						a.persistSubtitleAssignment(path, application.SubtitleLanguageFromFilename(a.path, path), false)
@@ -289,6 +286,9 @@ func (a *App) loadSubtitleAssignments() {
 
 func (a *App) persistSubtitleAssignment(externalPath, language string, disabled bool) {
 	if a.path == "" || a.subtitleAssignments == nil { return }
+	previous := a.subtitleAssignmentRecords[subtitlePathKey(a.path)]
+	if externalPath == "" { externalPath = previous.ExternalPath }
+	if language == "" { language = previous.Language }
 	record := domain.SubtitleAssignment{MediaPath: a.path, ExternalPath: externalPath, Language: language, Disabled: disabled}
 	if err := a.subtitleAssignments.SaveAssignment(record); err != nil { a.status = "Save subtitle assignment: " + err.Error(); return }
 	a.subtitleAssignmentRecords[subtitlePathKey(a.path)] = record
@@ -296,6 +296,7 @@ func (a *App) persistSubtitleAssignment(externalPath, language string, disabled 
 
 func (a *App) restoreSubtitleForCurrent() {
 	if a.subtitle == nil || a.path == "" { return }
+	a.subtitleDisabled = false
 	key := subtitlePathKey(a.path)
 	record, found := a.subtitleAssignmentRecords[key]
 	if !found {
@@ -305,32 +306,73 @@ func (a *App) restoreSubtitleForCurrent() {
 		if len(matches) > 1 { a.subtitleMenuOpen = true; a.status = fmt.Sprintf("%d matching subtitles found for %s", len(matches), filepath.Base(a.path)) }
 		if len(matches) == 1 {
 			lang := application.SubtitleLanguageFromFilename(a.path, matches[0])
-			if err := a.subtitle.LoadExternalSubtitle(matches[0]); err == nil { a.persistSubtitleAssignment(matches[0], lang, false) }
+			if err := a.loadExternalSubtitle(matches[0]); err == nil { a.persistSubtitleAssignment(matches[0], lang, false) }
 		}
 		return
 	}
-	if record.Disabled { _ = a.subtitle.DisableSubtitles(); return }
 	if record.ExternalPath != "" {
-		if _, err := os.Stat(record.ExternalPath); err != nil { a.status = "Saved subtitle is missing: " + filepath.Base(record.ExternalPath); return }
-		if err := a.subtitle.LoadExternalSubtitle(record.ExternalPath); err != nil { a.status = "Restore subtitle: " + err.Error(); return }
+		if _, err := os.Stat(record.ExternalPath); err != nil {
+			a.status = "Saved subtitle is missing: " + filepath.Base(record.ExternalPath)
+			if record.Disabled { _ = a.subtitle.SetSubtitleVisibility(false); a.subtitleDisabled = true }
+			return
+		}
+		if err := a.loadExternalSubtitle(record.ExternalPath); err != nil {
+			a.status = "Restore subtitle: " + err.Error()
+			return
+		}
 		a.status = "Restored subtitle: " + filepath.Base(record.ExternalPath)
+	}
+	if record.Disabled {
+		if err := a.subtitle.SetSubtitleVisibility(false); err != nil { a.status = err.Error(); return }
+		a.subtitleDisabled = true
 	}
 }
 
 func (a *App) handleDroppedSubtitleFiles(paths []string) {
 	if a.subtitle == nil || a.path == "" { return }
-	matches := application.MatchSubtitleFiles(a.path, paths)
-	if len(matches) == 0 { a.status = "Dropped files do not match the current video"; return }
+	matches := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for _, path := range paths {
+		if !application.IsSubtitleFile(path) { continue }
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() { continue }
+		key := subtitlePathKey(path)
+		if _, exists := seen[key]; exists { continue }
+		seen[key] = struct{}{}
+		matches = append(matches, path)
+	}
+	if len(matches) == 0 { a.status = "No supported subtitle files found in the drop"; return }
 	a.subtitleCandidates = matches
 	if len(matches) == 1 {
 		lang := application.SubtitleLanguageFromFilename(a.path, matches[0])
-		if err := a.subtitle.LoadExternalSubtitle(matches[0]); err != nil { a.status = err.Error(); return }
+		if err := a.loadExternalSubtitle(matches[0]); err != nil { a.status = err.Error(); return }
 		a.persistSubtitleAssignment(matches[0], lang, false)
 		a.status = "Loaded dropped subtitle: " + filepath.Base(matches[0])
 	} else {
 		a.status = fmt.Sprintf("%d matching subtitle files found; choose one in Subtitle Studio", len(matches))
 		a.subtitleMenuOpen = true
 	}
+	if a.win != nil && !a.win.IsDestroyed() { a.win.Invalidate() }
+}
+
+func (a *App) loadExternalSubtitle(path string) error {
+	if a.subtitle == nil { return fmt.Errorf("subtitle playback is unavailable") }
+	if err := a.subtitle.LoadExternalSubtitle(path); err != nil { return err }
+	if err := a.subtitle.SetSubtitleVisibility(true); err != nil { return err }
+	a.subtitleDisabled = false
+	return nil
+}
+
+func (a *App) toggleSubtitleVisibility() {
+	if a.subtitle == nil { return }
+	nextVisible := a.subtitleDisabled
+	if err := a.subtitle.SetSubtitleVisibility(nextVisible); err != nil {
+		a.status = "Subtitle visibility: " + err.Error()
+		return
+	}
+	a.subtitleDisabled = !nextVisible
+	a.persistSubtitleAssignment("", "", a.subtitleDisabled)
+	if a.subtitleDisabled { a.status = "Subtitles disabled" } else { a.status = "Subtitles enabled" }
 	if a.win != nil && !a.win.IsDestroyed() { a.win.Invalidate() }
 }
 

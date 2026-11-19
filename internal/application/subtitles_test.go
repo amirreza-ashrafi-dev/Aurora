@@ -44,3 +44,8 @@ func TestMatchSubtitleFilesUsesStrictVideoStem(t *testing.T) {
 		t.Fatalf("MatchSubtitleFiles() = %#v, want %#v", got, want)
 	}
 }
+
+func TestSubtitleLanguageFromFilename(t *testing.T) {
+	if got := SubtitleLanguageFromFilename("Movie.mkv", "Movie.fa-IR.srt"); got != "fa-IR" { t.Fatalf("language = %q", got) }
+	if got := SubtitleLanguageFromFilename("Movie.mkv", "Other.en.srt"); got != "und" { t.Fatalf("unrelated file language = %q", got) }
+}

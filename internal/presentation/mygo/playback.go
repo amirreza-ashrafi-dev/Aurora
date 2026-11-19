@@ -99,6 +99,14 @@ func (a *App) registerShortcuts(c *ui.Context) {
 	c.OnWindowShortcut(ui.Alt, ui.KeyBackspace, func() { a.resetSubtitleDelay() })
 	c.OnWindowShortcut(0, ui.KeyC, a.toggleCinematicMode)
 	c.OnWindowShortcut(0, ui.KeyEscape, func() {
+		if a.fullscreenSubtitleFlyout != nil && !a.fullscreenSubtitleFlyout.IsDestroyed() {
+			a.closeFullscreenSubtitleFlyout()
+			return
+		}
+		if a.subtitleFlyout != nil && !a.subtitleFlyout.IsDestroyed() {
+			a.closeSubtitleFlyout()
+			return
+		}
 		if a.cinematicMode {
 			a.setCinematicMode(false)
 			return

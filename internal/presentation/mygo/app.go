@@ -22,6 +22,12 @@ type App struct {
 	videoHWND     uintptr
 	player        application.Player
 	playerFactory application.PlayerFactory
+	subtitle application.SubtitlePlayer
+	subtitlePreferences application.SubtitlePreferencesRepository
+	subtitlePrefs domain.SubtitlePreferences
+	subtitleStyle domain.SubtitleStyle
+	subtitleDelay float64
+	subtitleMenuOpen bool
 	history        application.ProgressRepository
 	historyRecords map[string]domain.PlaybackProgress
 	pendingResume  *domain.PlaybackProgress
@@ -60,11 +66,14 @@ type App struct {
 
 // New creates the presentation controller. The player is created later, after
 // MyGo has supplied the native window handle for the embedded MPV surface.
-func New(platform application.NativePlatform, playerFactory application.PlayerFactory, history application.ProgressRepository) *App {
+func New(platform application.NativePlatform, playerFactory application.PlayerFactory, history application.ProgressRepository, subtitlePreferences application.SubtitlePreferencesRepository) *App {
 	return &App{
 		platform:       platform,
 		playerFactory:  playerFactory,
 		history:        history,
+		subtitlePreferences: subtitlePreferences,
+		subtitlePrefs: domain.SubtitlePreferences{Global: domain.DefaultSubtitleStyle()},
+		subtitleStyle: domain.DefaultSubtitleStyle(),
 		historyRecords: make(map[string]domain.PlaybackProgress),
 		status:         "Starting Aurora Player...",
 		state:          domain.PlaybackState{Volume: 100},
@@ -116,6 +125,21 @@ func (a *App) onReady() {
 			a.status = err.Error()
 		}
 		a.loadProgressHistory()
+		a.subtitle, _ = a.player.(application.SubtitlePlayer)
+		if a.subtitlePreferences != nil {
+			prefs, prefErr := a.subtitlePreferences.Load()
+			if prefErr != nil {
+				log.Printf("load subtitle preferences: %v", prefErr)
+			} else {
+				a.subtitlePrefs = prefs
+				a.subtitleStyle = application.SubtitleStyleForLanguage(prefs, "und")
+				if a.subtitle != nil {
+					if styleErr := a.subtitle.SetSubtitleStyle(a.subtitleStyle); styleErr != nil {
+						log.Printf("apply default subtitle style: %v", styleErr)
+					}
+				}
+			}
+		}
 		a.startPolling()
 	}
 

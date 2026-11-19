@@ -160,7 +160,7 @@ func (a *App) normalView(c *ui.Context) {
 					}
 				}
 				ui.Text(c, fmt.Sprintf("%.0f%%", a.state.Volume)).Width(38).FontSize(10).TextColor(ui.Hex(auroraText))
-				a.subtitleStudioPopover(c, "CC Subtitles", &a.subtitleMenuOpen)
+				a.subtitleStudioFlyoutButton(c)
 				if auroraQuietButton(c, "◫").Tooltip("Cinematic mode (C)").Clicked() {
 					a.toggleCinematicMode()
 				}

@@ -86,8 +86,25 @@ func (a *App) startProgressWorker() {
 				if pending != nil { persist(*pending); pending = nil }
 				timerC = nil
 			case <-a.progressStop:
-				if pending != nil { persist(*pending) }
-				return
+				// Drain requests queued just before shutdown so the final snapshot
+				// cannot lose a race with the stop signal.
+				for {
+					select {
+					case req := <-a.progressRequests:
+						switch {
+						case req.record != nil:
+							persist(req)
+							pending = nil
+						case req.deletePath != "":
+							persist(req)
+						case req.cancel:
+							pending = nil
+						}
+					default:
+						if pending != nil { persist(*pending) }
+						return
+					}
+				}
 			}
 		}
 	}()

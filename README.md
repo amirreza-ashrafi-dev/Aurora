@@ -22,11 +22,16 @@ The goal is simple: make watching videos feel effortless.
 - Playlist and playback controls, including removing individual queue items
 - Fullscreen playback with an auto-hiding floating controller
 - **Cinematic Mode** for distraction-free windowed or fullscreen viewing
+- **Smart Resume** offers to continue a video from its last saved position or start over
 - Keyboard shortcuts for playback, seeking, volume, fullscreen, and Cinematic Mode
 
 ### Cinematic Mode
 
 Press **C** or use the Cinematic Mode button to hide the normal player interface and expand the video to the available window area. Move the pointer to reveal the floating playback controller; it automatically hides after a short period of inactivity. Press **C** or **Esc** to leave Cinematic Mode.
+
+### Smart Resume
+
+When you open a video with saved progress, Aurora offers **Resume** or **Start over**. Progress is stored locally in a versioned JSON file under your Windows user configuration directory. The history is limited to 500 videos and 1 MiB; the least recently watched entries are removed when a limit is reached. Automatic queue playback always starts at the beginning and does not interrupt playback with a resume prompt.
 
 ## Technology
 

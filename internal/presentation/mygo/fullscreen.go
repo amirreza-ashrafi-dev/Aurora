@@ -151,6 +151,11 @@ func (a *App) startControllerMonitor() {
 						wasOverlayActive = true
 					}
 
+					// Fullscreen callbacks can show the flyout while Cinematic Mode
+					// is already active. Reconcile local monitor state with the
+					// actual window visibility before applying the hide timeout.
+					visible = a.controller.IsVisible()
+
 					insideMain, point := a.platform.CursorInsideWindow(a.win.NativeHandle())
 					insideController, _ := a.platform.CursorInsideWindow(a.controller.NativeHandle())
 					if !insideMain && !insideController {

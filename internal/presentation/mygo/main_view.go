@@ -14,6 +14,21 @@ func (a *App) view(c *ui.Context) {
 	applyAuroraTheme(c)
 	a.syncVideoHostToStage(c)
 
+	if a.cinematicMode {
+		a.cinematicView(c)
+	} else {
+		a.normalView(c)
+	}
+
+	// Handle.Bounds is committed after layout; one follow-up frame exposes the
+	// new rectangle to the Win32 child-window adapter.
+	if !a.videoLayoutFramePending {
+		a.videoLayoutFramePending = true
+		c.After(16 * time.Millisecond)
+	}
+}
+
+func (a *App) normalView(c *ui.Context) {
 	ui.Column(c).Fill().Background(ui.Hex(auroraBackground)).Children(func() {
 		a.windowTitleBar(c)
 		ui.Column(c).Fill().Padding(auroraMainPadding).Gap(10).Background(ui.Hex(auroraBackground)).Children(func() {
@@ -138,18 +153,30 @@ func (a *App) view(c *ui.Context) {
 					}
 				}
 				ui.Text(c, fmt.Sprintf("%.0f%%", a.state.Volume)).Width(38).FontSize(10).TextColor(ui.Hex(auroraText))
+				if auroraQuietButton(c, "◫").Tooltip("Cinematic mode (C)").Clicked() {
+					a.toggleCinematicMode()
+				}
 				if auroraQuietButton(c, "⛶").Tooltip("Fullscreen").Clicked() {
 					a.toggleFullscreen()
 				}
 			})
-			ui.Text(c, "F / F11  Fullscreen     ESC  Exit     Double-click video  Fullscreen").Shrink(0).FontSize(8).TextColor(ui.Hex("#778194"))
+			ui.Text(c, "C  Cinematic     F / F11  Fullscreen     ESC  Exit mode     Double-click video  Fullscreen").Shrink(0).FontSize(8).TextColor(ui.Hex("#778194"))
 		})
 	})
 
-	// Handle.Bounds is committed after layout; one follow-up frame exposes the
-	// new rectangle to the Win32 child-window adapter.
-	if !a.videoLayoutFramePending {
-		a.videoLayoutFramePending = true
-		c.After(16 * time.Millisecond)
-	}
+}
+
+func (a *App) cinematicView(c *ui.Context) {
+	ui.Column(c).Fill().Background(ui.Hex("#05070B")).Children(func() {
+		videoStage := ui.Box(c).Grow(1).FillWidth().FillHeight().MinWidth(0).MinHeight(0)
+		if strings.TrimSpace(a.path) == "" {
+			videoStage = videoStage.Center().Padding(24).Gap(10).
+				Background(ui.Hex("#090D14")).Children(func() {
+				ui.Text(c, "AURORA CINEMATIC MODE").FontSize(9).Bold().LetterSpacing(2).TextColor(ui.Hex(auroraAccent))
+				ui.Text(c, "Your screen is ready").FontSize(22).Bold().TextColor(ui.Hex(auroraText))
+				ui.Text(c, "Add a video to begin watching.").FontSize(11).TextColor(ui.Hex(auroraMuted))
+			})
+		}
+		videoStage.Bind(&a.videoStageHandle)
+	})
 }

@@ -18,8 +18,17 @@ func (a *App) fullscreenControls(c *ui.Context) {
 					ui.Text(c, "AURORA  /  NOW PLAYING").FontSize(8).LetterSpacing(1).TextColor(ui.Hex(auroraMuted))
 				})
 				ui.Spacer(c)
-				if auroraQuietButton(c, "Exit fullscreen").Clicked() {
-					a.exitFullscreen()
+				cinemaLabel := "Cinematic"
+				if a.cinematicMode {
+					cinemaLabel = "Exit cinema"
+				}
+				if auroraQuietButton(c, cinemaLabel).Clicked() {
+					a.toggleCinematicMode()
+				}
+				if a.win != nil && a.win.IsFullScreen() {
+					if auroraQuietButton(c, "Exit fullscreen").Clicked() {
+						a.exitFullscreen()
+					}
 				}
 			})
 

@@ -16,6 +16,18 @@ Built with **Go**, **MyGo**, and the powerful **libmpv** playback engine, Aurora
 
 The goal is simple: make watching videos feel effortless.
 
+## Current Features
+
+- Video playback powered by libmpv
+- Playlist and playback controls
+- Fullscreen playback with an auto-hiding floating controller
+- **Cinematic Mode** for distraction-free windowed or fullscreen viewing
+- Keyboard shortcuts for playback, seeking, volume, fullscreen, and Cinematic Mode
+
+### Cinematic Mode
+
+Press **C** or use the Cinematic Mode button to hide the normal player interface and expand the video to the available window area. Move the pointer to reveal the floating playback controller; it automatically hides after a short period of inactivity. Press **C** or **Esc** to leave Cinematic Mode.
+
 ## Technology
 
 | Technology | Purpose |
@@ -66,6 +78,7 @@ A media library and more advanced features may be considered in future versions.
 - [ ] Improve playback stability
 - [ ] Refine the user interface
 - [ ] Improve application architecture
+- [x] Add Cinematic Mode
 - [ ] Add more playback options
 - [ ] Improve accessibility and usability
 - [ ] Explore support for additional platforms

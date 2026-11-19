@@ -24,7 +24,7 @@ func (a *App) chooseSubtitleFile() {
 			Title: "Load subtitle file",
 			Multiple: false,
 			Filters: []mygo.FileFilter{
-				{Name: "Subtitle files", Extensions: []string{"srt", "ass", "ssa", "vtt", "sub"}},
+				{Name: "Subtitle files", Extensions: []string{"srt", "ass", "ssa", "vtt", "sub", "idx"}},
 				{Name: "All files", Extensions: []string{"*"}},
 			},
 		})

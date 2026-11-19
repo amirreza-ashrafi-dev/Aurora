@@ -62,7 +62,7 @@ func (a *App) applySubtitleStyle(style domain.SubtitleStyle) {
 	a.subtitlePrefs.Global = style
 	a.subtitlePrefs.Version = 1
 	if a.subtitlePreferences != nil {
-		if err := a.subtitlePreferences.Save(a.subtitlePrefs); err != nil {
+		if err := a.subtitlePreferences.SavePreferences(a.subtitlePrefs); err != nil {
 			a.status = "Save subtitle preferences: " + err.Error()
 			return
 		}

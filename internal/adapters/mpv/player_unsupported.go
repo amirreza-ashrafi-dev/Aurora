@@ -26,7 +26,7 @@ func (*Player) Close()                            {}
 
 func (*Player) LoadExternalSubtitle(string) error { return errors.New("Windows only") }
 func (*Player) CycleSubtitleTrack() error { return errors.New("Windows only") }
-func (*Player) RemoveExternalSubtitle(int64) error { return errors.New("Windows only") }
+func (*Player) RemoveSelectedExternalSubtitle() error { return errors.New("Windows only") }
 func (*Player) DisableSubtitles() error { return errors.New("Windows only") }
 func (*Player) SetSubtitleDelay(float64) error { return errors.New("Windows only") }
 func (*Player) SetSubtitleStyle(domain.SubtitleStyle) error { return errors.New("Windows only") }

@@ -2,7 +2,10 @@
 
 package mpv
 
-import "errors"
+import (
+	"errors"
+	"my-go/internal/domain"
+)
 
 // Player is a build-time placeholder for non-Windows targets.
 type Player struct{}

@@ -26,6 +26,9 @@ func (a *App) fullscreenControls(c *ui.Context) {
 				if auroraQuietButton(c, cinemaLabel).Clicked() {
 					a.toggleCinematicMode()
 				}
+				if auroraQuietButton(c, "CC Subtitles").Tooltip("Subtitle settings").Clicked() {
+					a.subtitleMenuOpen = !a.subtitleMenuOpen
+				}
 				if a.win != nil && a.win.IsFullScreen() {
 					if auroraQuietButton(c, "Exit fullscreen").Clicked() {
 						a.exitFullscreen()
@@ -78,6 +81,7 @@ func (a *App) fullscreenControls(c *ui.Context) {
 				}
 				ui.Text(c, fmt.Sprintf("%.0f%%", a.state.Volume)).Width(38).FontSize(10).TextColor(ui.Hex(auroraText))
 			})
+			if a.subtitleMenuOpen { a.subtitleStudioControls(c) }
 		})
 	})
 }

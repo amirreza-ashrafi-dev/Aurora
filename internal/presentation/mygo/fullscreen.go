@@ -91,6 +91,7 @@ func (a *App) hideController() {
 	if a.controller == nil || a.controller.IsDestroyed() {
 		return
 	}
+	a.closeFullscreenSubtitleFlyout()
 	if a.controller.IsVisible() {
 		a.controller.Hide()
 	}
@@ -158,6 +159,13 @@ func (a *App) startControllerMonitor() {
 
 					insideMain, point := a.platform.CursorInsideWindow(a.win.NativeHandle())
 					insideController, _ := a.platform.CursorInsideWindow(a.controller.NativeHandle())
+					// The subtitle panel is a child flyout of the controller. Treat
+					// the pointer inside it as controller activity, or the auto-hide
+					// timer could hide its parent while the user is choosing a track.
+					if panel := a.fullscreenSubtitleFlyout; panel != nil && !panel.IsDestroyed() && panel.IsVisible() {
+						insidePanel, _ := a.platform.CursorInsideWindow(panel.NativeHandle())
+						insideController = insideController || insidePanel
+					}
 					if !insideMain && !insideController {
 						if visible && a.pendingResume == nil {
 							a.hideController()

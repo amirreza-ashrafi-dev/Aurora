@@ -9,6 +9,7 @@ import (
 
 	"my-go/internal/adapters/history"
 	"my-go/internal/adapters/mpv"
+	"my-go/internal/adapters/subtitles"
 	"my-go/internal/application"
 	winplatform "my-go/internal/platform/windows"
 	mygopresentation "my-go/internal/presentation/mygo"
@@ -38,7 +39,12 @@ func Run() error {
 		platform.Close()
 		return fmt.Errorf("initialize playback history: %w", err)
 	}
-	app := mygopresentation.New(platform, playerFactory, progressRepository)
+	subtitleRepository, err := subtitles.NewJSONRepository(filepath.Join(configDir, "Aurora Player"))
+	if err != nil {
+		platform.Close()
+		return fmt.Errorf("initialize subtitle preferences: %w", err)
+	}
+	app := mygopresentation.New(platform, playerFactory, progressRepository, subtitleRepository)
 	defer app.Close()
 	if err := app.Run(); err != nil {
 		return fmt.Errorf("run Aurora Player: %w", err)

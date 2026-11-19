@@ -33,6 +33,7 @@ const (
 type Platform struct {
 	dll        xwindows.Handle
 	comctl32   xwindows.Handle
+	kernel32   xwindows.Handle
 	videoProc  uintptr
 	subclassID uintptr
 
@@ -82,9 +83,15 @@ func New() (*Platform, error) {
 		xwindows.FreeLibrary(dll)
 		return nil, err
 	}
+	kernel32, err := xwindows.LoadLibrary("kernel32.dll")
+	if err != nil {
+		xwindows.FreeLibrary(comctl)
+		xwindows.FreeLibrary(dll)
+		return nil, err
+	}
 
-	p := &Platform{dll: dll, comctl32: comctl, subclassID: 1}
-	h, ch := uintptr(dll), uintptr(comctl)
+	p := &Platform{dll: dll, comctl32: comctl, kernel32: kernel32, subclassID: 1}
+	h, ch, kh := uintptr(dll), uintptr(comctl), uintptr(kernel32)
 	purego.RegisterLibFunc(&p.createWindowEx, h, "CreateWindowExW")
 	purego.RegisterLibFunc(&p.showWindow, h, "ShowWindow")
 	purego.RegisterLibFunc(&p.updateWindow, h, "UpdateWindow")
@@ -105,7 +112,8 @@ func New() (*Platform, error) {
 	purego.RegisterLibFunc(&p.getMonitorInfoW, h, "GetMonitorInfoW")
 	purego.RegisterLibFunc(&p.getDpiForWindow, h, "GetDpiForWindow")
 	purego.RegisterLibFunc(&p.clientToScreen, h, "ClientToScreen")
-	purego.RegisterLibFunc(&p.getModuleHandle, h, "GetModuleHandleW")
+	// GetModuleHandleW is exported by kernel32.dll, not user32.dll.
+	purego.RegisterLibFunc(&p.getModuleHandle, kh, "GetModuleHandleW")
 	purego.RegisterLibFunc(&p.setWindowsHookEx, h, "SetWindowsHookExW")
 	purego.RegisterLibFunc(&p.unhookWindowsHookEx, h, "UnhookWindowsHookEx")
 	purego.RegisterLibFunc(&p.callNextHookEx, h, "CallNextHookEx")
@@ -419,5 +427,9 @@ func (p *Platform) Close() {
 	if p.dll != 0 {
 		xwindows.FreeLibrary(p.dll)
 		p.dll = 0
+	}
+	if p.kernel32 != 0 {
+		xwindows.FreeLibrary(p.kernel32)
+		p.kernel32 = 0
 	}
 }

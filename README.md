@@ -23,7 +23,7 @@ The goal is simple: make watching videos feel effortless.
 - Fullscreen playback with an auto-hiding floating controller
 - **Cinematic Mode** for distraction-free windowed or fullscreen viewing
 - **Smart Resume** offers to continue a video from its last saved position or start over
-- External subtitle loading and an initial Subtitle Studio for appearance and synchronization
+- External subtitle loading, strict filename matching, per-video subtitle restoration, drag-and-drop, and Subtitle Studio appearance/synchronization
 - Keyboard shortcuts for playback, seeking, volume, fullscreen, and Cinematic Mode
 
 ### Cinematic Mode

@@ -268,7 +268,22 @@ func (p *Player) LoadExternalSubtitle(path string) error {
 // DisableSubtitles disables the active subtitle track without removing tracks.
 func (p *Player) CycleSubtitleTrack() error { return p.commandArgs("cycle", "sid") }
 
-func (p *Player) RemoveExternalSubtitle(id int64) error { return p.commandArgs("sub-remove", strconv.FormatInt(id, 10)) }
+func (p *Player) RemoveSelectedExternalSubtitle() error {
+	id, err := p.GetDouble("sid")
+	if err != nil { return err }
+	if id < 0 { return fmt.Errorf("no subtitle track is selected") }
+	external, err := p.getPropertyStringValue(fmt.Sprintf("track-list/%d/external", int64(id)))
+	if err != nil || external != "yes" { return fmt.Errorf("the selected subtitle is not an external track") }
+	return p.commandArgs("sub-remove", strconv.FormatInt(int64(id), 10))
+}
+
+func (p *Player) getPropertyStringValue(name string) (string, error) {
+	if p == nil || p.ctx == nil { return "", fmt.Errorf("mpv is not initialized") }
+	ptr := p.getPropertyString(p.ctx, name)
+	if ptr == 0 { return "", fmt.Errorf("mpv property %q is unavailable", name) }
+	defer p.free(ptr)
+	return windows.BytePtrToString((*byte)(unsafe.Pointer(ptr))), nil
+}
 
 func (p *Player) DisableSubtitles() error {
 	return p.setSubtitleProperty("sid", "no")

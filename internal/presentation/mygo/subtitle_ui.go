@@ -350,9 +350,6 @@ func subtitleColorFromMPV(value string) ui.Color {
 }
 
 func (a *App) closeSubtitleFlyoutWindow(flyout **mygo.Window, anchor *mygo.Rectangle, open *bool) {
-	if a.platform != nil {
-		a.platform.StopOutsideClickDismiss()
-	}
 	current := *flyout
 	*flyout = nil
 	*anchor = mygo.Rectangle{}
@@ -454,12 +451,6 @@ func (a *App) subtitleStudioFlyoutButtonAt(
 			(*flyoutRef).SetAnchor(anchor)
 			*previousAnchor = anchor
 		}
-		if a.platform != nil {
-			a.platform.UpdateOutsideClickDismissAnchor(
-				buttonWindow.NativeHandle(),
-				domain.Rect{X: bounds.X, Y: bounds.Y, W: bounds.W, H: bounds.H},
-			)
-		}
 		return
 	}
 
@@ -470,35 +461,15 @@ func (a *App) subtitleStudioFlyoutButtonAt(
 		Gap:       8,
 		Width:     440,
 		Height:    500,
-		Focusable: false,
+		Focusable: true,
 		Hidden:    true,
 		Shadow:    true,
 		Content:   ui.View(a.subtitleStudioFlyoutView),
 	})
 	*flyoutRef = flyout
 	*previousAnchor = anchor
-	if a.platform != nil {
-		err := a.platform.WatchOutsideClickDismiss(
-			flyout.NativeHandle(),
-			buttonWindow.NativeHandle(),
-			domain.Rect{X: bounds.X, Y: bounds.Y, W: bounds.W, H: bounds.H},
-			func() {
-				mygo.RunOnMain(func() {
-					if *flyoutRef == flyout {
-						a.closeSubtitleFlyoutWindow(flyoutRef, previousAnchor, open)
-					}
-				})
-			},
-		)
-		if err != nil {
-			a.status = "Subtitle popup outside-click handling: " + err.Error()
-		}
-	}
 	flyout.OnClosed(func() {
 		if *flyoutRef == flyout {
-			if a.platform != nil {
-				a.platform.StopOutsideClickDismiss()
-			}
 			*flyoutRef = nil
 			*previousAnchor = mygo.Rectangle{}
 			*open = false

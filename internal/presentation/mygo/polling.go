@@ -3,6 +3,8 @@ package presentation
 import (
 	"path/filepath"
 	"time"
+
+	"my-go/internal/application"
 )
 
 func (a *App) startPolling() {
@@ -14,6 +16,7 @@ func (a *App) startPolling() {
 		defer ticker.Stop()
 		lastProgressSample := time.Now()
 		lastProgressWrite := time.Now()
+		lastSubtitleLanguageCheck := time.Time{}
 		for {
 			select {
 			case <-a.pollStop:
@@ -60,6 +63,20 @@ func (a *App) startPolling() {
 							if now.Sub(lastProgressWrite) >= 30*time.Second {
 								a.sendProgressRequest(progressWriteRequest{record: record})
 								lastProgressWrite = now
+							}
+						}
+					}
+					if a.subtitle != nil && now.Sub(lastSubtitleLanguageCheck) >= 2*time.Second {
+						lastSubtitleLanguageCheck = now
+						language, languageErr := a.subtitle.ActiveSubtitleLanguage()
+						if languageErr == nil {
+							normalized := application.NormalizeSubtitleLanguage(language)
+							if normalized != a.activeSubtitleLanguage {
+								a.activeSubtitleLanguage = normalized
+								style := application.SubtitleStyleForLanguage(a.subtitlePrefs, normalized)
+								if styleErr := a.subtitle.SetSubtitleStyle(style); styleErr == nil {
+									a.subtitleStyle = style
+								}
 							}
 						}
 					}

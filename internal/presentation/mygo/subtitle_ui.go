@@ -2,6 +2,8 @@ package presentation
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"path/filepath"
 
 	mygo "github.com/egoist/mygo"
@@ -38,6 +40,7 @@ func (a *App) chooseSubtitleFile() {
 				a.status = "Load subtitle: " + err.Error()
 				return
 			}
+			a.persistSubtitleAssignment(paths[0], application.SubtitleLanguageFromFilename(a.path, paths[0]), false)
 			a.status = "Subtitle loaded: " + filepath.Base(paths[0])
 			a.subtitleMenuOpen = false
 			a.win.Invalidate()
@@ -100,7 +103,10 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 			if auroraQuietButton(c, "Load file…").Clicked() { a.chooseSubtitleFile() }
 			if auroraQuietButton(c, "Disable").Clicked() {
 				if a.subtitle != nil {
-					if err := a.subtitle.DisableSubtitles(); err != nil { a.status = err.Error() } else { a.status = "Subtitles disabled" }
+					if err := a.subtitle.DisableSubtitles(); err != nil { a.status = err.Error() } else {
+						a.persistSubtitleAssignment("", "", true)
+						a.status = "Subtitles disabled"
+					}
 				}
 			}
 		})
@@ -138,7 +144,87 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 			if auroraQuietButton(c, "+0.1s").Clicked() { a.adjustSubtitleDelay(0.1) }
 			if auroraQuietButton(c, "Reset").Clicked() { a.resetSubtitleDelay() }
 		})
+		ui.Row(c).Gap(7).Children(func() {
+			if auroraQuietButton(c, "Next track").Clicked() { if tracks, ok := a.subtitle.(interface{ CycleSubtitleTrack() error }); ok { if err := tracks.CycleSubtitleTrack(); err != nil { a.status = err.Error() } else { a.status = "Subtitle track changed" } } }
+			if auroraQuietButton(c, "Remove external").Clicked() { if a.subtitle != nil { a.status = "Remove an external subtitle after selecting it is not available for this track yet" } }
+			if auroraQuietButton(c, "Save for language").Clicked() { a.saveStyleForActiveLanguage() }
+		})
 		ui.Text(c, "ASS/SSA and image-based subtitles may not support every appearance setting.").FontSize(8).TextColor(ui.Hex(auroraMuted))
 	})
 }
 
+
+func (a *App) saveStyleForActiveLanguage() {
+	language := application.NormalizeSubtitleLanguage(a.activeSubtitleLanguage)
+	if language == "und" { a.status = "The active subtitle has no language metadata"; return }
+	for i := range a.subtitlePrefs.Languages {
+		if application.NormalizeSubtitleLanguage(a.subtitlePrefs.Languages[i].Language) == language {
+			a.subtitlePrefs.Languages[i].Style = a.subtitleStyle
+			if a.subtitlePreferences != nil { if err := a.subtitlePreferences.SavePreferences(a.subtitlePrefs); err != nil { a.status = err.Error(); return } }
+			a.status = "Saved subtitle style for " + language
+			return
+		}
+	}
+	a.subtitlePrefs.Languages = append(a.subtitlePrefs.Languages, domain.SubtitleLanguageProfile{Language: language, Style: a.subtitleStyle})
+	if a.subtitlePreferences != nil { if err := a.subtitlePreferences.SavePreferences(a.subtitlePrefs); err != nil { a.status = err.Error(); return } }
+	a.status = "Saved subtitle style for " + language
+}
+
+func (a *App) loadSubtitleAssignments() {
+	if a.subtitleAssignments == nil { return }
+	records, err := a.subtitleAssignments.LoadAll()
+	if err != nil { a.status = "Load subtitle assignments: " + err.Error(); return }
+	for _, record := range records { a.subtitleAssignmentRecords[subtitlePathKey(record.MediaPath)] = record }
+}
+
+func (a *App) persistSubtitleAssignment(externalPath, language string, disabled bool) {
+	if a.path == "" || a.subtitleAssignments == nil { return }
+	record := domain.SubtitleAssignment{MediaPath: a.path, ExternalPath: externalPath, Language: language, Disabled: disabled}
+	if err := a.subtitleAssignments.SaveAssignment(record); err != nil { a.status = "Save subtitle assignment: " + err.Error(); return }
+	a.subtitleAssignmentRecords[subtitlePathKey(a.path)] = record
+}
+
+func (a *App) restoreSubtitleForCurrent() {
+	if a.subtitle == nil || a.path == "" { return }
+	key := subtitlePathKey(a.path)
+	record, found := a.subtitleAssignmentRecords[key]
+	if !found {
+		matches, err := application.DiscoverSubtitleFiles(a.path)
+		if err != nil { return }
+		a.subtitleCandidates = matches
+		if len(matches) == 1 {
+			lang := application.SubtitleLanguageFromFilename(a.path, matches[0])
+			if err := a.subtitle.LoadExternalSubtitle(matches[0]); err == nil { a.persistSubtitleAssignment(matches[0], lang, false) }
+		}
+		return
+	}
+	if record.Disabled { _ = a.subtitle.DisableSubtitles(); return }
+	if record.ExternalPath != "" {
+		if _, err := os.Stat(record.ExternalPath); err != nil { a.status = "Saved subtitle is missing: " + filepath.Base(record.ExternalPath); return }
+		if err := a.subtitle.LoadExternalSubtitle(record.ExternalPath); err != nil { a.status = "Restore subtitle: " + err.Error(); return }
+		a.status = "Restored subtitle: " + filepath.Base(record.ExternalPath)
+	}
+}
+
+func (a *App) handleDroppedSubtitleFiles(paths []string) {
+	if a.subtitle == nil || a.path == "" { return }
+	matches := application.MatchSubtitleFiles(a.path, paths)
+	if len(matches) == 0 { a.status = "Dropped files do not match the current video"; return }
+	a.subtitleCandidates = matches
+	if len(matches) == 1 {
+		lang := application.SubtitleLanguageFromFilename(a.path, matches[0])
+		if err := a.subtitle.LoadExternalSubtitle(matches[0]); err != nil { a.status = err.Error(); return }
+		a.persistSubtitleAssignment(matches[0], lang, false)
+		a.status = "Loaded dropped subtitle: " + filepath.Base(matches[0])
+	} else {
+		a.status = fmt.Sprintf("%d matching subtitle files found; choose one in Subtitle Studio", len(matches))
+		a.subtitleMenuOpen = true
+	}
+	if a.win != nil && !a.win.IsDestroyed() { a.win.Invalidate() }
+}
+
+func subtitlePathKey(path string) string {
+	abs, err := filepath.Abs(path)
+	if err == nil { path = abs }
+	return strings.ToLower(filepath.Clean(path))
+}

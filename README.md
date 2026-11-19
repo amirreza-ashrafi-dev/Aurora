@@ -1,65 +1,88 @@
-# Aurora Player 0.1.0
+# Aurora Player
 
-Aurora Player is a Windows 11 native media player built with Go, MyGo's native UI, and an embedded libmpv video surface.
+<p align="center">
+  <strong>A simple, beautiful media player for Windows.</strong>
+</p>
 
-## Project structure
+<p align="center">
+  <img src="./resources/aurora.png" alt="Aurora Player screenshot placeholder" width="800">
+</p>
 
-```text
-.
-├── main.go                         # MyGo native-app entry point
-├── cmd/aurora/main.go              # conventional Go entry point
-├── internal/
-│   ├── bootstrap/                  # composition root; creates concrete adapters
-│   ├── domain/                     # media and playback value types
-│   ├── application/                # ports and UI-independent use-case helpers
-│   ├── adapters/mpv/               # libmpv implementation of application.Player
-│   ├── platform/windows/           # Win32 child-window, cursor and DPI adapter
-│   └── presentation/mygo/          # MyGo window, views, controls and lifecycle
-├── resources/
-├── third_party/mpv/                # bundled runtime DLLs go here
-├── go.mod
-└── mygo.json
-```
+## About Aurora Player
+
+**Aurora Player** is a modern desktop media player designed for Windows 11. It aims to combine a clean, elegant interface with reliable media playback and a comfortable user experience.
+
+Built with **Go**, **MyGo**, and the powerful **libmpv** playback engine, Aurora Player brings together native Windows integration and a modern graphical interface.
+
+The goal is simple: make watching videos feel effortless.
+
+## Technology
+
+| Technology | Purpose |
+|---|---|
+| Go | Main programming language |
+| MyGo | Desktop application framework |
+| libmpv | Media playback engine |
+| purego | Calling native Windows APIs |
+| Win32 API | Windows video hosting and integration |
 
 ## Requirements
 
-- Windows 11 x64
-- Go 1.27.3 (as specified by `go.mod`)
-- MyGo v0.9.2 (pinned by `go.mod`)
-- The MPV runtime DLLs used by the original project
+- Windows 11 (64-bit)
+- Go 1.27.3 or a compatible version
+- MyGo v0.9.2
+- libmpv runtime files
 
-Place these files in `third_party/mpv/` before building:
+## Building from Source
 
-- `libmpv-2.dll`
-- `d3dcompiler_43.dll`
-
-The `mygo.json` resources list is already configured to package these two files. The DLLs were not included in the source provided in chat, so they are not present in this ZIP. Use the same copies from your existing project; do not download unrelated or mismatched builds.
-
-## Build
-
-From the project root, in a Windows x64 terminal:
+1. Clone or download the project.
+2. Make sure the required Go dependencies are installed.
+3. Check that the MPV runtime files are available in `third_party/mpv`.
+4. Open a terminal in the project directory.
+5. Run:
 
 ```powershell
-go mod tidy
 go tool mygo build -platform windows/amd64
 ```
 
-For a direct Go build of the conventional command package:
+The build output is configured in `mygo.json`.
 
-```powershell
-go build -o build\AuroraPlayer.exe .\cmd\aurora
-```
+## Project Status
 
-The MyGo build is the recommended packaged-app workflow because it reads `mygo.json` and copies the configured resources.
+Aurora Player is currently in early development.
 
-## Architecture notes
+The current focus is on:
 
-- `internal/application` owns the ports consumed by the presentation layer. The MPV and Win32 adapters satisfy those interfaces without importing MyGo.
-- `internal/domain` contains neutral playback and geometry types. The Windows adapter receives `domain.Rect`; it does not import `github.com/egoist/mygo/ui`.
-- `internal/presentation/mygo` contains the existing MyGo UI and window/event coordination. It talks to MPV and Win32 through application interfaces.
-- `internal/bootstrap` is the only place that wires concrete adapters to the presentation controller.
-- The native video host and MPV adapter are Windows-only. Small unsupported-platform files allow the project packages to be type-checked on other operating systems, but they do not provide cross-platform playback.
+- Reliable playback
+- A polished and consistent user interface
+- Clean project architecture
+- Better Windows integration
+- Stability and performance
 
-## Verification status
+A media library and more advanced features may be considered in future versions. The priority is to make the core player solid before expanding its functionality.
 
-The source was formatted with `gofmt`. A full Windows build and playback test have not been run in this environment: the available Go toolchain here is older than the project's declared Go 1.27.3, and the two MPV runtime DLLs were not supplied with the pasted source. Run the build command above on your Windows development machine after placing the original DLLs in `third_party/mpv/`.
+## Roadmap
+
+- [ ] Improve playback stability
+- [ ] Refine the user interface
+- [ ] Improve application architecture
+- [ ] Add more playback options
+- [ ] Improve accessibility and usability
+- [ ] Explore support for additional platforms
+
+## Screenshots
+
+More screenshots will be added as the project develops.
+
+## License
+
+Aurora Player is licensed under the MIT License.
+
+You are free to use, copy, modify, merge, publish, distribute, sublicense, and sell copies of the software, subject to the terms of the MIT License.
+
+---
+
+<p align="center">
+  <strong>Aurora Player</strong><br>
+  <em>A clearer, calmer way to enjoy your media.</em>
+</p>

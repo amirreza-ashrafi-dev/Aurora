@@ -3,7 +3,6 @@ package presentation
 import (
 	"fmt"
 	"path/filepath"
-	"time"
 
 	mygo "github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -143,4 +142,3 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 	})
 }
 
-var _ = time.Second

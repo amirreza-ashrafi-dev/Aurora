@@ -26,10 +26,5 @@ func (*Platform) UpdateWindow(uintptr) int32                      { return 0 }
 func (*Platform) RevealChild(uintptr) error                       { return errors.New("Windows only") }
 func (*Platform) DestroyWindow(uintptr) int32                     { return 0 }
 func (*Platform) RemoveVideoSubclass(uintptr)                     {}
-func (*Platform) WatchOutsideClickDismiss(uintptr, uintptr, domain.Rect, func()) error {
-	return errors.New("outside-click dismissal is supported only on Windows")
-}
-func (*Platform) UpdateOutsideClickDismissAnchor(uintptr, domain.Rect) {}
-func (*Platform) StopOutsideClickDismiss() {}
 func (*Platform) LogHWND(string, uintptr)                         {}
 func (*Platform) Close()                                          {}

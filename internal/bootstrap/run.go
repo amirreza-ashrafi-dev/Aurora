@@ -44,7 +44,7 @@ func Run() error {
 		platform.Close()
 		return fmt.Errorf("initialize subtitle preferences: %w", err)
 	}
-	app := mygopresentation.New(platform, playerFactory, progressRepository, subtitleRepository)
+	app := mygopresentation.New(platform, playerFactory, progressRepository, subtitleRepository, subtitleRepository)
 	defer app.Close()
 	if err := app.Run(); err != nil {
 		return fmt.Errorf("run Aurora Player: %w", err)

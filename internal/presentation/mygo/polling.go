@@ -45,6 +45,8 @@ func (a *App) startPolling() {
 							a.state.Duration = 0
 							a.state.Paused = false
 							a.status = "Playing: " + filepath.Base(a.path)
+							a.resetSubtitleDelay()
+							a.restoreSubtitleForCurrent()
 						}
 					}
 					if !a.scrubbing && posErr == nil {

@@ -39,11 +39,6 @@ func (a *App) chooseFiles() {
 }
 
 func (a *App) addFiles(paths []string) {
-	if a.player == nil {
-		a.status = "libmpv is not initialized"
-		return
-	}
-
 	filtered := application.FilterNewMedia(a.playlist, paths)
 	validationNote := ""
 	if filtered.Duplicates > 0 || filtered.Invalid > 0 {
@@ -63,6 +58,10 @@ func (a *App) addFiles(paths []string) {
 		} else {
 			a.status = "No new valid videos to add" + validationNote
 		}
+		return
+	}
+	if err := a.ensurePlayer(); err != nil {
+		a.status = "Initialize playback: " + err.Error()
 		return
 	}
 
@@ -90,6 +89,7 @@ func (a *App) addFiles(paths []string) {
 		a.state.Duration = 0
 		a.state.Paused = false
 		a.status = "Playing: " + filepath.Base(a.path) + validationNote
+		a.captureMemorySample("playback_started")
 		a.offerResumeForCurrent()
 		a.restoreSubtitleForCurrent()
 		return
@@ -149,6 +149,13 @@ func (a *App) removePlaylistIndex(index int) {
 		a.status = "Queue is empty"
 		a.subtitleCandidates = nil
 		a.hideVideoHost()
+		a.stopPolling()
+		if a.player != nil {
+			a.player.Close()
+			a.player = nil
+			a.subtitle = nil
+		}
+		a.captureMemorySample("playback_stopped_player_released")
 		return
 	}
 
@@ -190,6 +197,7 @@ func (a *App) playPlaylistIndex(index int) {
 	a.state.Duration = 0
 	a.state.Paused = false
 	a.status = "Playing: " + filepath.Base(a.path)
+	a.captureMemorySample("playback_started")
 	a.offerResumeForCurrent()
 	a.restoreSubtitleForCurrent()
 }

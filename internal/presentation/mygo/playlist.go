@@ -150,8 +150,11 @@ func (a *App) removePlaylistIndex(index int) {
 		a.subtitleCandidates = nil
 		a.hideVideoHost()
 		a.stopPolling()
-		a.closePlayer()
-		a.captureMemorySample("playback_stopped_player_released")
+		// Stop and unload the media but retain libmpv's context and DLL.
+		if err := a.unloadPlayerMedia(); err != nil {
+			log.Printf("unload MPV media after queue emptied: %v", err)
+		}
+		a.captureMemorySample("playback_stopped_media_unloaded")
 		return
 	}
 

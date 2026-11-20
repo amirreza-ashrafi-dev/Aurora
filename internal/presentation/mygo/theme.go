@@ -33,6 +33,9 @@ func applyAuroraTheme(c *ui.Context) {
 		return
 	}
 	theme := *ui.DarkTheme()
+	// Keep desktop accessibility preferences (high contrast and text scale),
+	// but Aurora owns its accent color in both active and inactive windows.
+	theme = *theme.WithPreferences(c.Preferences())
 	theme.Background = ui.Hex(auroraBackground)
 	theme.Surface = ui.Hex(auroraPanel)
 	theme.SurfaceHover = ui.Hex("#201C14")
@@ -45,14 +48,18 @@ func applyAuroraTheme(c *ui.Context) {
 	theme.AccentPressed = ui.Hex(auroraAccentPressed)
 	theme.AccentText = ui.Hex(auroraAccentText)
 	theme.InactiveAccent = ui.Hex(auroraAccent)
+	theme.Selection = ui.RGBA(221, 187, 83, 0.28)
 	theme.Focus = ui.RGBA(221, 187, 83, 0.72)
+	if c.Preferences().HighContrast {
+		theme.Focus = ui.Hex(auroraAccent)
+	}
 	theme.Radius = 8
 	theme.Spacing = 4
 	theme.FontSize = 13
 	// TeX Gyre Heros is the closest redistributable companion to Nimbus Sans.
 	// Keep a system fallback for machines where the font package is not installed.
 	theme.Font = "TeX Gyre Heros, Arial"
-	c.SetTheme(theme.WithPreferences(c.Preferences()))
+	c.SetTheme(&theme)
 }
 
 func auroraQuietButton(c *ui.Context, label string) ui.Element {

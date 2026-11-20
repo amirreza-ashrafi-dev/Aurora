@@ -1,6 +1,8 @@
 package application
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -57,9 +59,17 @@ func TestIsSubtitleFile(t *testing.T) {
 			t.Errorf("IsSubtitleFile(%q) = false, want true", path)
 		}
 	}
-	for _, path := range []string{"movie.mp4", "movie.txt", "movie", "folder.srt"} {
+	for _, path := range []string{"movie.mp4", "movie.txt", "movie"} {
 		if IsSubtitleFile(path) {
 			t.Errorf("IsSubtitleFile(%q) = true, want false", path)
 		}
+	}
+
+	folderPath := filepath.Join(t.TempDir(), "folder.srt")
+	if err := os.Mkdir(folderPath, 0o755); err != nil {
+		t.Fatalf("create subtitle-named directory: %v", err)
+	}
+	if IsSubtitleFile(folderPath) {
+		t.Errorf("IsSubtitleFile(%q) = true, want false for a directory", folderPath)
 	}
 }

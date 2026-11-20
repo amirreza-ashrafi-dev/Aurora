@@ -227,6 +227,7 @@ func (a *App) startControllerMonitor() {
 					if a.win == nil || a.win.IsDestroyed() {
 						return
 					}
+					if !a.volumeOSDUntil.IsZero() && time.Now().After(a.volumeOSDUntil) { a.hideVolumeOSD() }
 
 					overlayActive := a.win.IsFullScreen() || a.cinematicMode
 					if !overlayActive {

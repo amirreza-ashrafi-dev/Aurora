@@ -250,6 +250,8 @@ func (a *App) ensurePlayer() error {
 		return fmt.Errorf("player is unavailable")
 	}
 	if a.player != nil {
+		// Keep the initialized context across queue sessions; only polling stops.
+		a.startPolling()
 		return nil
 	}
 	if a.playerFactory == nil {

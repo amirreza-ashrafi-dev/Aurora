@@ -27,6 +27,13 @@ type App struct {
 	volumeOSDUntil time.Time
 	wheelRemainder int32
 
+	memoryWindow *mygo.Window
+	memoryMonitorStop chan struct{}
+	memorySamples []memorySample
+	memoryExportPath string
+	thumbnailRasterBytes map[string]uint64
+	thumbnailEncodedBytes map[string]uint64
+
 	platform      application.NativePlatform
 	videoHWND     uintptr
 	player        application.Player
@@ -103,6 +110,8 @@ func New(platform application.NativePlatform, playerFactory application.PlayerFa
 		subtitleAssignmentRecords: make(map[string]domain.SubtitleAssignment),
 		queueThumbnails: make(map[string]*ui.Bitmap),
 		thumbnailCaptured: make(map[string]bool),
+		thumbnailRasterBytes: make(map[string]uint64),
+		thumbnailEncodedBytes: make(map[string]uint64),
 		subtitlePrefs: domain.SubtitlePreferences{Global: domain.DefaultSubtitleStyle()},
 		subtitleStyle: domain.DefaultSubtitleStyle(),
 		historyRecords: make(map[string]domain.PlaybackProgress),

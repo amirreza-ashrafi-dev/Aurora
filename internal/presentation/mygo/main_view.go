@@ -104,88 +104,99 @@ func (a *App) normalView(c *ui.Context) {
 									mediaPath := a.playlist[i]
 									title := queueCardTitle(mediaPath)
 									active := i == a.playlistPos
-									formatLabel := queueCardFormat(mediaPath)
-									if active && a.state.Duration > 0 {
-										formatLabel += "  ·  " + formatTime(a.state.Duration)
-									}
 									cardBorder := auroraBorderSoft
 									if active {
 										cardBorder = "#80672D"
 									}
-									ui.Column(c).FillWidth().Gap(6).Children(func() {
-										card := ui.Button(c, "").
-											Label("Play "+title).
-											FillWidth().Height(154).
-											Padding(7).Radius(11).
-											Background(ui.Hex("#171510")).
-											Border(1, ui.Hex(cardBorder))
-										if active {
-											card.Background(ui.Hex("#211C10"))
-										}
-										card.Children(func() {
-											ui.Box(c).FillWidth().Height(84).
-												Radius(7).Clip().
-												Background(ui.Hex("#090807")).
-												Children(func() {
-													if bitmap := a.queueThumbnails[mediaPath]; bitmap != nil {
-														ui.Image(c, bitmap).FillWidth().FillHeight().Fit(ui.Cover).Radius(7)
-													} else {
-														ui.Column(c).Fill().Center().Gap(5).Children(func() {
-															ui.Text(c, "A U R O R A").
-																FontSize(8).Bold().LetterSpacing(2).
-																TextColor(ui.Hex("#8D7338"))
-															ui.Text(c, "▶").
-																FontSize(18).TextColor(ui.Hex("#DDBB53"))
-														})
-													}
-
-												})
-											ui.Row(c).FillWidth().Gap(5).AlignItems(ui.Center).Children(func() {
-												ui.Column(c).Grow(1).Gap(3).Children(func() {
-													titleColor := auroraText
-													if active { titleColor = "#F2D995" }
-													ui.Text(c, title).FontSize(10).Bold().
-														TextColor(ui.Hex(titleColor)).Ellipsis("…")
-													ui.Text(c, formatLabel).
-														FontSize(7).LetterSpacing(0.9).
-														TextColor(ui.Hex(auroraMuted))
-												})
-												if active {
-													ui.Text(c, "PLAYING").
-														FontSize(7).Bold().LetterSpacing(0.6).
-														Padding(5, 7).Radius(5).
-														Background(ui.Hex("#DDBB53")).
-														TextColor(ui.Hex("#17130A"))
-												} else {
-													ui.Text(c, "IN QUEUE").
-														FontSize(7).LetterSpacing(0.5).
-														TextColor(ui.Hex(auroraMuted))
-												}
-											})
-										})
-										if card.Clicked() {
-											a.playPlaylistIndex(index)
-										}
-										ui.Row(c).FillWidth().Gap(5).Children(func() {
-											ui.Box(c).Grow(1).Height(2).Radius(1).
-												Background(ui.Hex("#29251C"))
-											if active {
-												ui.Box(c).Width(44).Height(2).Radius(1).
-													Background(ui.Hex(auroraAccent))
-											}
-											ui.Spacer(c)
-											remove := ui.Button(c, "Remove").
-												FontSize(7).Padding(3, 7).Radius(6).
+									ui.Row(c).FillWidth().Height(84).Gap(7).
+										Padding(7).AlignItems(ui.Center).
+										Background(ui.Hex("#171510")).
+										Border(1, ui.Hex(cardBorder)).
+										Radius(10).Children(func() {
+											play := ui.Button(c, "").
+												Label("Play "+title).
+												Grow(1).Height(68).
+												Padding(0).Radius(6).
 												Background(ui.Transparent).
-												Border(1, ui.Hex(auroraBorderSoft)).
+												Border(0, ui.Transparent)
+											play.Children(func() {
+												ui.Row(c).Fill().Gap(9).
+													AlignItems(ui.Center).Children(func() {
+														ui.Box(c).Width(86).Height(54).
+															Radius(6).Clip().
+															Background(ui.Hex("#090807")).
+															Children(func() {
+																if bitmap := a.queueThumbnails[mediaPath]; bitmap != nil {
+																	ui.Image(c, bitmap).FillWidth().FillHeight().
+																		Fit(ui.Cover).Radius(6)
+																} else {
+																	ui.Column(c).Fill().Center().Gap(3).
+																		Children(func() {
+																			ui.Text(c, "AURORA").
+																				FontSize(7).Bold().LetterSpacing(1.6).
+																				TextColor(ui.Hex("#8D7338"))
+																			ui.Text(c, "▶").FontSize(15).
+																				TextColor(ui.Hex("#DDBB53"))
+																		})
+																}
+															})
+														ui.Column(c).Grow(1).Gap(4).
+															AlignItems(ui.Start).Children(func() {
+																titleColor := auroraText
+																if active { titleColor = "#F2D995" }
+																ui.Text(c, title).FillWidth().
+																	FontSize(9).Bold().
+																	TextColor(ui.Hex(titleColor)).
+																	Ellipsis("…")
+																meta := strings.ToUpper(strings.TrimPrefix(filepath.Ext(mediaPath), "."))
+																if meta == "" { meta = "VIDEO" }
+																if active && a.state.Duration > 0 {
+																	resolution := ""
+																	if a.videoHeight > 0 {
+																		resolution = fmt.Sprintf("%dp · ", a.videoHeight)
+																	}
+																	meta = resolution + formatTime(a.state.Position) +
+																		" / " + formatTime(a.state.Duration)
+																}
+																ui.Text(c, meta).FillWidth().
+																	FontSize(7).LetterSpacing(0.35).
+																	TextColor(ui.Hex(auroraMuted)).
+																	Ellipsis("…")
+																ui.Row(c).Gap(5).AlignItems(ui.Center).
+																	Children(func() {
+																		if active {
+																			ui.Box(c).Width(5).Height(5).
+																				Radius(3).
+																				Background(ui.Hex(auroraAccent))
+																			ui.Text(c, "PLAYING").
+																				FontSize(7).Bold().
+																				LetterSpacing(0.7).
+																				TextColor(ui.Hex(auroraAccent))
+																		} else {
+																			ui.Text(c, "IN QUEUE").
+																				FontSize(7).LetterSpacing(0.5).
+																				TextColor(ui.Hex(auroraMuted))
+																		}
+																	})
+															})
+													})
+											})
+											if play.Clicked() {
+												a.playPlaylistIndex(index)
+											}
+											remove := ui.Button(c, "×").
+												Width(22).Height(28).
+												Padding(0).Radius(6).
+												Background(ui.Transparent).
+												Border(0, ui.Transparent).
+												FontSize(15).
 												TextColor(ui.Hex(auroraMuted)).
 												Tooltip("Remove from queue")
 											if remove.Clicked() {
 												a.removePlaylistIndex(index)
 											}
 										})
-									})
-								}).Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(0).Gap(10)
+								}).Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(0).Gap(8)
 							}
 
 							ui.Column(c).Shrink(0).Gap(8).Children(func() {

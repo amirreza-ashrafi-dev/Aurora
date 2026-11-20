@@ -215,6 +215,7 @@ func (a *App) startControllerMonitor() {
 					overlayActive := a.win.IsFullScreen() || a.cinematicMode
 					if !overlayActive {
 						a.hideFullscreenHeader()
+						a.closeResumeBanner()
 						if visible {
 							a.hideController()
 						}
@@ -235,6 +236,9 @@ func (a *App) startControllerMonitor() {
 					}
 					a.updateControllerBounds()
 					a.showFullscreenHeader()
+					if a.pendingResume != nil {
+						a.showResumeBanner()
+					}
 					if !wasOverlayActive {
 						a.showController()
 						visible = true

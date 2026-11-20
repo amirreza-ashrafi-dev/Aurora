@@ -32,6 +32,9 @@ type Player struct {
 	errorString       func(int32) uintptr
 	getPropertyString func(unsafe.Pointer, string) uintptr
 	free              func(uintptr)
+
+	runtimeVideoOutputReinit bool
+	videoOutputReleased      bool
 }
 
 func mpvErrorText(ptr uintptr) string {
@@ -39,6 +42,28 @@ func mpvErrorText(ptr uintptr) string {
 		return "unknown mpv error"
 	}
 	return windows.BytePtrToString((*byte)(unsafe.Pointer(ptr)))
+}
+
+func (p *Player) readMPVVersion() string {
+	if p == nil || p.ctx == nil || p.getPropertyString == nil || p.free == nil {
+		return ""
+	}
+	ptr := p.getPropertyString(p.ctx, "mpv-version")
+	if ptr == 0 {
+		return ""
+	}
+	defer p.free(ptr)
+	return windows.BytePtrToString((*byte)(unsafe.Pointer(ptr)))
+}
+
+// SupportsRuntimeVideoOutputRelease reports whether this MPV version rebuilds
+// the video output when the "vo" option changes. MPV added UPDATE_VO handling
+// for this option in v0.39.0.
+func (p *Player) SupportsRuntimeVideoOutputRelease() bool {
+	if p == nil {
+		return false
+	}
+	return p.runtimeVideoOutputReinit
 }
 
 // New loads the bundled libmpv DLL and initializes an embedded D3D11 output.
@@ -106,6 +131,7 @@ func New(hwnd uintptr, resourcesDir string) (*Player, error) {
 		p.Close()
 		return nil, fmt.Errorf("mpv_initialize failed: %s", message)
 	}
+	p.runtimeVideoOutputReinit = supportsRuntimeVideoOutputReinit(p.readMPVVersion())
 	return p, nil
 }
 
@@ -144,6 +170,12 @@ func (p *Player) Load(path string) error {
 	}
 	if _, err := os.Stat(abs); err != nil {
 		return err
+	}
+	if p.videoOutputReleased {
+		if err := p.setVideoOutput("gpu"); err != nil {
+			return fmt.Errorf("restore MPV GPU video output: %w", err)
+		}
+		p.videoOutputReleased = false
 	}
 	return p.commandArgs("loadfile", abs, "replace")
 }
@@ -269,10 +301,33 @@ func (p *Player) Stop() error {
 	return p.Seek(0)
 }
 
-// Unload stops the active file and releases its playback resources while
-// keeping the initialized MPV context available for the next queue session.
+// Unload stops the active file and switches MPV to its null video output.
+// On MPV v0.39+, changing "vo" triggers UPDATE_VO, which destroys the old
+// renderer and its D3D11 resources without destroying the MPV core. Load
+// restores "gpu" before starting the next file.
 func (p *Player) Unload() error {
-	return p.commandArgs("stop")
+	if err := p.commandArgs("stop"); err != nil {
+		return err
+	}
+	if !p.runtimeVideoOutputReinit {
+		return fmt.Errorf("runtime video-output release is not supported by this MPV build")
+	}
+	if err := p.setVideoOutput("null"); err != nil {
+		return fmt.Errorf("switch MPV to null video output: %w", err)
+	}
+	p.videoOutputReleased = true
+	return nil
+}
+
+func (p *Player) setVideoOutput(name string) error {
+	if p == nil || p.ctx == nil {
+		return fmt.Errorf("mpv is not initialized")
+	}
+	code := p.setPropertyString(p.ctx, "vo", name)
+	if code < 0 {
+		return fmt.Errorf("set video output to %q failed: %s (code %d)", name, mpvErrorText(p.errorString(code)), code)
+	}
+	return nil
 }
 
 func (p *Player) Close() {

@@ -284,16 +284,35 @@ func (a *App) ensurePlayer() error {
 	return nil
 }
 
-// unloadPlayerMedia stops the current media while preserving the initialized MPV context.
+// unloadPlayerMedia stops playback and releases the GPU video output when the
+// linked MPV build supports runtime VO reinitialization. Older MPV builds
+// cannot safely reconfigure the VO at runtime, so release their whole context.
 func (a *App) unloadPlayerMedia() error {
-	if a == nil { return nil }
+	if a == nil {
+		return nil
+	}
 	a.playerCommandMu.Lock()
 	defer a.playerCommandMu.Unlock()
-	if a.player == nil { return nil }
-	if player, ok := a.player.(interface{ Unload() error }); ok {
-		return player.Unload()
+
+	player := a.player
+	if player == nil {
+		return nil
 	}
-	return a.player.Stop()
+	if managed, ok := player.(interface {
+		SupportsRuntimeVideoOutputRelease() bool
+		Unload() error
+	}); ok {
+		if !managed.SupportsRuntimeVideoOutputRelease() {
+			log.Printf("MPV build does not support runtime video-output release; destroying its context")
+			a.closePlayerLocked()
+			return nil
+		}
+		return managed.Unload()
+	}
+	if unloader, ok := player.(interface{ Unload() error }); ok {
+		return unloader.Unload()
+	}
+	return player.Stop()
 }
 
 // closePlayer waits for any in-flight background MPV command before destroying
@@ -301,7 +320,11 @@ func (a *App) unloadPlayerMedia() error {
 func (a *App) closePlayer() {
 	a.playerCommandMu.Lock()
 	defer a.playerCommandMu.Unlock()
+	a.closePlayerLocked()
+}
 
+// closePlayerLocked releases the player while playerCommandMu is held.
+func (a *App) closePlayerLocked() {
 	player := a.player
 	a.player = nil
 	a.subtitle = nil

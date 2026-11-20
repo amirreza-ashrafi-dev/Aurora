@@ -24,6 +24,7 @@ func (*Player) Seek(float64) error                { return errors.New("Windows o
 func (*Player) SetVolume(float64) error           { return errors.New("Windows only") }
 func (*Player) Stop() error                       { return errors.New("Windows only") }
 func (*Player) Unload() error                     { return errors.New("Windows only") }
+func (*Player) SupportsRuntimeVideoOutputRelease() bool { return false }
 func (*Player) CaptureThumbnail(string) error { return errors.New("Windows only") }
 func (*Player) Close()                            {}
 

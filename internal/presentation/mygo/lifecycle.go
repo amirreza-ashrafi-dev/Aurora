@@ -6,6 +6,7 @@ func (a *App) Close() {
 	a.closeOnce.Do(func() {
 		a.closeSubtitleFlyout()
 		a.closeFullscreenSubtitleFlyout()
+		a.closeResumeBanner()
 		a.stopControllerMonitor()
 		a.stopPolling()
 		a.saveCurrentProgressImmediately()

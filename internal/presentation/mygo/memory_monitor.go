@@ -62,6 +62,7 @@ func (a *App) toggleMemoryMonitor() {
 	a.memoryExportPath = ""
 	a.memoryWindow = mygo.NewWindow(mygo.WindowOptions{
 		Title:      "Aurora Memory Diagnostics",
+		Parent:     a.win,
 		Width:      920,
 		Height:     760,
 		MinWidth:   780,

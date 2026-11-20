@@ -58,7 +58,7 @@ func applyAuroraTheme(c *ui.Context) {
 	theme.FontSize = 13
 	// TeX Gyre Heros is the closest redistributable companion to Nimbus Sans.
 	// Keep a system fallback for machines where the font package is not installed.
-	theme.Font = "TeX Gyre Heros, Arial"
+	theme.Font = "Segoe UI"
 	c.SetTheme(&theme)
 }
 

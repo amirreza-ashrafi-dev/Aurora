@@ -264,7 +264,7 @@ func (a *App) showResumeBanner() {
 	if bounds.Width < 1 {
 		return
 	}
-	anchor := mygo.Rectangle{X: bounds.Width / 2, Y: 66, Width: 1, Height: 1}
+	anchor := mygo.Rectangle{X: bounds.Width / 2, Y: 84, Width: 1, Height: 1}
 	if a.resumeBanner != nil && !a.resumeBanner.IsDestroyed() {
 		if anchor != a.resumeBannerAnchor {
 			a.resumeBanner.SetAnchor(anchor)
@@ -277,7 +277,7 @@ func (a *App) showResumeBanner() {
 	}
 	a.resumeBanner = mygo.NewFlyout(mygo.FlyoutOptions{
 		Parent: a.win, Anchor: anchor, Placement: mygo.PlacementBottom,
-		Gap: 12, Width: 720, Height: 94, Focusable: false,
+		Gap: 12, Width: 672, Height: 77, Focusable: false,
 		Hidden: true, Shadow: true, Content: ui.View(a.resumeBannerView),
 	})
 	a.resumeBannerAnchor = anchor

@@ -106,12 +106,12 @@ func (a *App) Run() error {
 func (a *App) onReady() {
 	a.win = mygo.NewWindow(mygo.WindowOptions{
 		Title:             "Aurora Player",
-		Width:             1200,
-		Height:            900,
-		MinWidth:          950,
+		Width:             1280,
+		Height:            1024,
+		MinWidth:          960,
 		MinHeight:         720,
 		TitleBarStyle:     mygo.TitleBarHidden,
-		TitleBarHeight:    54,
+		TitleBarHeight:    40,
 		HideWindowButtons: true,
 		Content:           ui.View(a.view),
 	})

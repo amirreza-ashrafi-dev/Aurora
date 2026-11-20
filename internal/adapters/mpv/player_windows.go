@@ -269,6 +269,12 @@ func (p *Player) Stop() error {
 	return p.Seek(0)
 }
 
+// Unload stops the active file and releases its playback resources while
+// keeping the initialized MPV context available for the next queue session.
+func (p *Player) Unload() error {
+	return p.commandArgs("stop")
+}
+
 func (p *Player) Close() {
 	if p == nil {
 		return

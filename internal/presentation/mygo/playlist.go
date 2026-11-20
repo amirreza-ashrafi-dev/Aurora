@@ -129,6 +129,12 @@ func (a *App) removePlaylistIndex(index int) {
 	)
 	a.playlist = updated
 	a.playlistPos = nextCurrent
+	if !a.playlistContainsPath(removedPath) {
+		a.evictQueueThumbnail(removedPath)
+		if a.win != nil && !a.win.IsDestroyed() {
+			a.win.Invalidate()
+		}
+	}
 
 	if !removedCurrent {
 		a.status = fmt.Sprintf("Removed %q from queue", filepath.Base(removedPath))

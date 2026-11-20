@@ -7,6 +7,10 @@ func (a *App) Close() {
 		a.closeSubtitleFlyout()
 		a.closeFullscreenSubtitleFlyout()
 		a.closeResumeBanner()
+		if a.fullscreenHeader != nil && !a.fullscreenHeader.IsDestroyed() {
+			a.fullscreenHeader.Destroy()
+			a.fullscreenHeader = nil
+		}
 		a.stopControllerMonitor()
 		a.stopPolling()
 		a.saveCurrentProgressImmediately()

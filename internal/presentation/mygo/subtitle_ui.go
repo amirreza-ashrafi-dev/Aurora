@@ -97,23 +97,32 @@ func (a *App) resetSubtitleDelay() {
 }
 
 func (a *App) subtitleStudioControls(c *ui.Context) {
-	ui.Column(c).FillWidth().Padding(12).Gap(9).Children(func() {
-		ui.Row(c).FillWidth().Shrink(0).Gap(6).Children(func() {
-			ui.Text(c, "SUBTITLE STUDIO").FontSize(10).Bold().LetterSpacing(1).TextColor(ui.Hex(auroraText))
-			ui.Spacer(c)
-			if auroraQuietButton(c, "Load file…").Clicked() {
-				a.chooseSubtitleFile()
-			}
-			toggleLabel := "Disable"
-			if a.subtitleDisabled { toggleLabel = "Enable" }
-			if auroraQuietButton(c, toggleLabel).Clicked() {
-				a.toggleSubtitleVisibility()
-			}
-		})
+	ui.Column(c).FillWidth().Padding(16).Gap(13).Children(func() {
+		ui.Row(c).FillWidth().Shrink(0).Gap(6).Padding(0, 0, 10, 0).
+			Children(func() {
+				ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+					ui.Box(c).Size(7).Radius(4).Background(ui.Hex(auroraAccent))
+					ui.Text(c, "SUBTITLE STUDIO").FontSize(11).Bold().
+						LetterSpacing(1.1).TextColor(ui.Hex(auroraText))
+				})
+				ui.Spacer(c)
+				if auroraQuietButton(c, "Load file…").Clicked() {
+					a.chooseSubtitleFile()
+				}
+				toggleLabel := "Disable"
+				if a.subtitleDisabled { toggleLabel = "Enable" }
+				if auroraQuietButton(c, toggleLabel).Clicked() {
+					a.toggleSubtitleVisibility()
+				}
+				if auroraQuietButton(c, "×").Width(32).Tooltip("Close Subtitle Studio").Clicked() {
+					a.closeSubtitleFlyout()
+					a.closeFullscreenSubtitleFlyout()
+				}
+			})
 
 		ui.Text(c, "FONT").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
 		ui.Row(c).FillWidth().Shrink(0).Gap(5).Children(func() {
-			for _, font := range []string{"Segoe UI", "Arial", "Tahoma", "Yu Gothic"} {
+			for _, font := range []string{"TeX Gyre Heros", "Arial", "Tahoma", "Yu Gothic"} {
 				name := font
 				button := auroraQuietButton(c, name).Grow(1).NoWrap().Ellipsis("…")
 				if button.Clicked() {
@@ -512,8 +521,8 @@ func (a *App) subtitleStudioFlyoutButtonAt(
 		Anchor:    anchor,
 		Placement: mygo.PlacementTopEnd,
 		Gap:       8,
-		Width:     440,
-		Height:    500,
+		Width:     452,
+		Height:    786,
 		Focusable: true,
 		Hidden:    true,
 		Shadow:    true,
@@ -533,8 +542,8 @@ func (a *App) subtitleStudioFlyoutButtonAt(
 
 func (a *App) subtitleStudioFlyoutView(c *ui.Context) {
 	applyAuroraTheme(c)
-	c.Root().Background(ui.Hex(auroraPanel))
-	ui.Column(c).Fill().Background(ui.Hex(auroraPanel)).Children(func() {
+	c.Root().Background(ui.Hex("#0C0B09"))
+	ui.Column(c).Fill().Padding(1).Background(ui.Hex("#0C0B09")).Border(1, ui.Hex("#6F5928")).Radius(14).Children(func() {
 		ui.Scroll(c).Fill().Children(func() {
 			a.subtitleStudioControls(c)
 		})

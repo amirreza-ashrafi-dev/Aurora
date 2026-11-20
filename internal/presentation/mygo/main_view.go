@@ -135,13 +135,7 @@ func (a *App) normalView(c *ui.Context) {
 																FontSize(18).TextColor(ui.Hex("#DDBB53"))
 														})
 													}
-													if active {
-														ui.Text(c, "PLAYING").
-															FontSize(7).Bold().LetterSpacing(1).
-															Padding(5, 7).Radius(5).
-															Background(ui.Hex("#DDBB53")).
-															TextColor(ui.Hex("#17130A"))
-													}
+
 												})
 											ui.Row(c).FillWidth().Gap(5).AlignItems(ui.Center).Children(func() {
 												ui.Column(c).Grow(1).Gap(3).Children(func() {
@@ -153,9 +147,17 @@ func (a *App) normalView(c *ui.Context) {
 														FontSize(7).LetterSpacing(0.9).
 														TextColor(ui.Hex(auroraMuted))
 												})
-												ui.Text(c, "⋮").
-													FontSize(15).Padding(2, 5).
-													TextColor(ui.Hex(auroraMuted))
+												if active {
+													ui.Text(c, "PLAYING").
+														FontSize(7).Bold().LetterSpacing(0.6).
+														Padding(5, 7).Radius(5).
+														Background(ui.Hex("#DDBB53")).
+														TextColor(ui.Hex("#17130A"))
+												} else {
+													ui.Text(c, "IN QUEUE").
+														FontSize(7).LetterSpacing(0.5).
+														TextColor(ui.Hex(auroraMuted))
+												}
 											})
 										})
 										if card.Clicked() {

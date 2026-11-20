@@ -28,10 +28,7 @@ func (a *App) Close() {
 			}
 			a.controller = nil
 		}
-		if a.player != nil {
-			a.player.Close()
-			a.player = nil
-		}
+		a.closePlayer()
 		if a.videoHWND != 0 && a.platform != nil {
 			a.platform.RemoveVideoSubclass(a.videoHWND)
 			a.platform.DestroyWindow(a.videoHWND)

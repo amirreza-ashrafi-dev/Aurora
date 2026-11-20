@@ -28,6 +28,7 @@ type ProgressRepository interface {
 type NativePlatform interface {
 	CreateVideoHost(parent uintptr) (uintptr, error)
 	InstallVideoDoubleClick(hwnd uintptr, onDoubleClick func()) error
+	InstallVideoMouseWheel(hwnd uintptr, onWheel func(delta int32)) error
 	InstallVideoFileDrop(hwnd uintptr, onDrop func([]string)) error
 	LayoutVideo(parent, child uintptr, fullscreen bool, stage domain.Rect) error
 	CursorInsideWindow(hwnd uintptr) (bool, domain.Point)

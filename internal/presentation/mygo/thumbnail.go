@@ -1,15 +1,21 @@
 package presentation
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
+	xdraw "golang.org/x/image/draw"
 )
+
+const thumbnailMaxDimension = 320
 
 type thumbnailCapturer interface {
 	CaptureThumbnail(path string) error
@@ -63,8 +69,17 @@ func (a *App) captureQueueThumbnail(mediaPath string) {
 
 	go func() {
 		data, captureErr := []byte(nil), capturer.CaptureThumbnail(path)
+		width, height := 0, 0
 		if captureErr == nil {
 			data, captureErr = os.ReadFile(path)
+		}
+		if captureErr == nil {
+			data, width, height, captureErr = resizeThumbnailPNG(data, thumbnailMaxDimension)
+			if captureErr == nil {
+				// Keep the on-disk cache compact too. A failed cache rewrite does
+				// not prevent displaying the already-resized in-memory thumbnail.
+				_ = os.WriteFile(path, data, 0o600)
+			}
 		}
 		window.Update(func() {
 			if a.win == nil || a.win.IsDestroyed() {
@@ -92,7 +107,9 @@ func (a *App) captureQueueThumbnail(mediaPath string) {
 			if old := a.queueThumbnails[mediaPath]; old != nil {
 				old.ReleasePixels()
 			}
-			width, height := bitmap.Size()
+			if width <= 0 || height <= 0 {
+				width, height = bitmap.Size()
+			}
 			a.thumbnailRasterBytes[mediaPath] = uint64(width) * uint64(height) * 4
 			a.thumbnailEncodedBytes[mediaPath] = uint64(len(data))
 			a.queueThumbnails[mediaPath] = bitmap
@@ -100,6 +117,40 @@ func (a *App) captureQueueThumbnail(mediaPath string) {
 			a.win.Invalidate()
 		})
 	}()
+}
+
+// resizeThumbnailPNG bounds queue-card images independently of source video
+// resolution. This affects only the small preview shown in the playlist, never
+// the decoded video or its playback quality.
+func resizeThumbnailPNG(data []byte, maxDimension int) ([]byte, int, int, error) {
+	if maxDimension <= 0 {
+		return nil, 0, 0, fmt.Errorf("thumbnail maximum dimension must be positive")
+	}
+	source, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("decode captured thumbnail: %w", err)
+	}
+	bounds := source.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	if width <= 0 || height <= 0 {
+		return nil, 0, 0, fmt.Errorf("captured thumbnail has invalid dimensions")
+	}
+	longest := max(width, height)
+	if longest <= maxDimension {
+		return data, width, height, nil
+	}
+
+	scale := float64(maxDimension) / float64(longest)
+	targetWidth := max(1, int(float64(width)*scale+0.5))
+	targetHeight := max(1, int(float64(height)*scale+0.5))
+	target := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
+	xdraw.CatmullRom.Scale(target, target.Bounds(), source, bounds, xdraw.Over, nil)
+
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, target); err != nil {
+		return nil, 0, 0, fmt.Errorf("encode resized thumbnail: %w", err)
+	}
+	return encoded.Bytes(), targetWidth, targetHeight, nil
 }
 
 // playlistContainsPath reports whether a media path still has a visible queue

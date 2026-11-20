@@ -16,6 +16,69 @@ const (
 	controllerBottom = 24
 )
 
+func (a *App) showFullscreenHeader() {
+	if a == nil || a.win == nil || a.win.IsDestroyed() {
+		return
+	}
+	bounds := a.win.ContentBounds()
+	if bounds.Width < 1 {
+		return
+	}
+	width := min(bounds.Width-32, 1280)
+	if width < 320 {
+		width = bounds.Width
+	}
+	anchor := mygo.Rectangle{X: bounds.Width / 2, Y: 0, Width: 1, Height: 1}
+	if a.fullscreenHeader != nil && !a.fullscreenHeader.IsDestroyed() {
+		a.fullscreenHeader.SetAnchor(anchor)
+		if !a.fullscreenHeader.IsVisible() {
+			a.fullscreenHeader.ShowInactive()
+		}
+		return
+	}
+	a.fullscreenHeader = mygo.NewFlyout(mygo.FlyoutOptions{
+		Parent: a.win, Anchor: anchor, Placement: mygo.PlacementBottom,
+		Gap: 8, Width: width, Height: 58, Focusable: false,
+		Hidden: true, Content: ui.View(a.fullscreenHeaderView),
+	})
+	a.fullscreenHeader.ShowInactive()
+}
+
+func (a *App) hideFullscreenHeader() {
+	if a.fullscreenHeader != nil && !a.fullscreenHeader.IsDestroyed() {
+		a.fullscreenHeader.Hide()
+	}
+}
+
+func (a *App) fullscreenHeaderView(c *ui.Context) {
+	applyAuroraTheme(c)
+	c.Root().Background(ui.Transparent)
+	ui.Row(c).Fill().Padding(10, 16).Gap(10).
+		Background(ui.Hex("#101211")).
+		Border(1, ui.Hex(auroraBorderSoft)).Radius(12).
+		AlignItems(ui.Center).Children(func() {
+			if logo := auroraLogo(); logo != nil {
+				ui.Image(c, logo).Width(28).Height(28).Fit(ui.Contain)
+			}
+			ui.Column(c).Gap(1).Children(func() {
+				ui.Text(c, "AURORA CINEMA").FontSize(10).Bold().
+					LetterSpacing(1.6).TextColor(ui.Hex(auroraAccent))
+				ui.Text(c, "MASTER PLAYBACK SUITE").FontSize(7).
+					LetterSpacing(0.8).TextColor(ui.Hex(auroraMuted))
+			})
+			ui.Spacer(c)
+			if a.win != nil && a.win.IsFullScreen() {
+				if auroraQuietButton(c, "⛶  Exit fullscreen").Clicked() {
+					a.exitFullscreen()
+				}
+			} else if a.cinematicMode {
+				if auroraQuietButton(c, "Exit cinematic").Clicked() {
+					a.toggleCinematicMode()
+				}
+			}
+		})
+}
+
 func (a *App) controllerAnchorTarget() (mygo.Rectangle, bool) {
 	if a == nil || a.win == nil || a.win.IsDestroyed() {
 		return mygo.Rectangle{}, false
@@ -151,6 +214,7 @@ func (a *App) startControllerMonitor() {
 
 					overlayActive := a.win.IsFullScreen() || a.cinematicMode
 					if !overlayActive {
+						a.hideFullscreenHeader()
 						if visible {
 							a.hideController()
 						}
@@ -170,6 +234,7 @@ func (a *App) startControllerMonitor() {
 						return
 					}
 					a.updateControllerBounds()
+					a.showFullscreenHeader()
 					if !wasOverlayActive {
 						a.showController()
 						visible = true

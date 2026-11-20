@@ -272,14 +272,14 @@ func (a *App) resumePrompt(c *ui.Context) {
 		Children(func() {
 			fullTitle := filepath.Base(record.MediaPath)
 			displayTitle := fullTitle+"  ·  "+formatTime(record.Position)
-			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(3).Children(func() {
+			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).MaxWidthPercent(100).Gap(3).Children(func() {
 				ui.Text(c, "CONTINUE WATCHING?").
 					FontSize(9).Bold().LetterSpacing(1.1).
 					TextColor(ui.Hex(auroraAccent))
-				ui.Text(c, displayTitle).FillWidth().MinWidth(0).NoWrap().
+				ui.Text(c, displayTitle).FillWidth().MinWidth(0).SingleLine().
 					FontSize(12).Bold().
 					TextColor(ui.Hex(auroraText)).
-					Ellipsis("…").Tooltip(fullTitle)
+					Tooltip(fullTitle)
 			})
 			if auroraQuietButton(c, "Start over").Clicked() {
 				a.chooseStartOver()
@@ -349,7 +349,7 @@ func (a *App) resumeBannerView(c *ui.Context) {
 				})
 			fullTitle := filepath.Base(record.MediaPath)
 			displayTitle := fullTitle+"  ·  "+formatTime(record.Position)
-			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(5).Children(func() {
+			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).MaxWidthPercent(100).Gap(5).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, "CONTINUE WATCHING?").FontSize(9).Bold().
 						LetterSpacing(1.2).TextColor(ui.Hex(auroraAccent))
@@ -357,9 +357,9 @@ func (a *App) resumeBannerView(c *ui.Context) {
 						Padding(4, 7).Radius(5).
 						Background(ui.Hex("#292315")).TextColor(ui.Hex("#D8BE79"))
 				})
-				ui.Text(c, displayTitle).FillWidth().MinWidth(0).NoWrap().
+				ui.Text(c, displayTitle).FillWidth().MinWidth(0).SingleLine().
 					FontSize(12).Bold().TextColor(ui.Hex(auroraText)).
-					Ellipsis("…").Tooltip(fullTitle)
+					Tooltip(fullTitle)
 			})
 			if auroraQuietButton(c, "Start over").Clicked() {
 				a.chooseStartOver()

@@ -7,7 +7,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-//go:embed ../../../resources/icon.png
+//go:embed assets/logo.png
 var auroraLogoPNG []byte
 
 var (

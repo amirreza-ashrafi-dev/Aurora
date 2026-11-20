@@ -228,6 +228,22 @@ func (p *Player) SetVolume(volume float64) error {
 	return nil
 }
 
+// CaptureThumbnail saves the currently rendered video frame as a PNG.
+// The caller supplies a cache path; this is intentionally a best-effort action.
+func (p *Player) CaptureThumbnail(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("thumbnail path is empty")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		return fmt.Errorf("create thumbnail cache: %w", err)
+	}
+	return p.commandArgs("screenshot-to-file", abs, "video")
+}
+
 func (p *Player) Stop() error {
 	if p == nil || p.ctx == nil {
 		return fmt.Errorf("mpv is not initialized")

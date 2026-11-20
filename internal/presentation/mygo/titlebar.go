@@ -15,10 +15,12 @@ func (a *App) windowTitleBar(c *ui.Context) {
 		Gap(10).
 		Background(ui.Hex(auroraHeader)).
 		Children(func() {
-			// Until the final logo bitmap is embedded in the repository, retain
-			// the wordmark treatment and avoid inventing a substitute logo mark.
+			if logo := auroraLogo(); logo != nil {
+				ui.Image(c, logo).Width(27).Height(27).Fit(ui.Contain)
+			}
 			ui.Column(c).Gap(0).Children(func() {
-				ui.Text(c, "AURORA").FontSize(12).Bold().LetterSpacing(1.8).TextColor(ui.Hex(auroraAccent))
+				ui.Text(c, "AURORA").FontSize(11).Bold().LetterSpacing(1.8).TextColor(ui.Hex(auroraAccent))
+				ui.Text(c, "CINEMA PLAYER").FontSize(6).LetterSpacing(1.4).TextColor(ui.Hex(auroraMuted))
 			})
 			ui.Text(c, "PLAYER  /  VERSION 0.1.0").
 				FontSize(8).

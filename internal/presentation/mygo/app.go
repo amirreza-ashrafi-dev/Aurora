@@ -31,6 +31,8 @@ type App struct {
 	subtitleStyle domain.SubtitleStyle
 	subtitleDelay float64
 	subtitleDisabled bool
+	queueThumbnails map[string]*ui.Bitmap
+	thumbnailCaptured map[string]bool
 	subtitleMenuOpen bool
 	fullscreenSubtitleMenuOpen bool
 	subtitleFlyout *mygo.Window
@@ -89,6 +91,8 @@ func New(platform application.NativePlatform, playerFactory application.PlayerFa
 		subtitlePreferences: subtitlePreferences,
 		subtitleAssignments: subtitleAssignments,
 		subtitleAssignmentRecords: make(map[string]domain.SubtitleAssignment),
+		queueThumbnails: make(map[string]*ui.Bitmap),
+		thumbnailCaptured: make(map[string]bool),
 		subtitlePrefs: domain.SubtitlePreferences{Global: domain.DefaultSubtitleStyle()},
 		subtitleStyle: domain.DefaultSubtitleStyle(),
 		historyRecords: make(map[string]domain.PlaybackProgress),

@@ -103,7 +103,6 @@ func (a *App) normalView(c *ui.Context) {
 									index := i
 									mediaPath := a.playlist[i]
 									title := queueCardTitle(mediaPath)
-									_, hasThumbnail := a.queueThumbnails[mediaPath]
 									active := i == a.playlistPos
 									cardBorder := auroraBorderSoft
 									if active {

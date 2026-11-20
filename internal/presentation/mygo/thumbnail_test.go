@@ -19,7 +19,7 @@ func TestPlaylistContainsPath(t *testing.T) {
 
 func TestEvictQueueThumbnailClearsAllTrackedState(t *testing.T) {
 	app := &App{
-		queueThumbnails:       map[string]*ui.Bitmap{},
+		queueThumbnails:       map[string]*ui.Bitmap{"movie": nil},
 		thumbnailCaptured:     map[string]bool{"movie": true},
 		thumbnailCaptureTokens: map[string]uint64{"movie": 42},
 		thumbnailRasterBytes:  map[string]uint64{"movie": 64 * 1024 * 1024},
@@ -28,6 +28,9 @@ func TestEvictQueueThumbnailClearsAllTrackedState(t *testing.T) {
 
 	app.evictQueueThumbnail("movie")
 
+	if _, ok := app.queueThumbnails["movie"]; ok {
+		t.Fatal("thumbnail bitmap reference was not removed")
+	}
 	if _, ok := app.thumbnailCaptured["movie"]; ok {
 		t.Fatal("thumbnail captured marker was not cleared")
 	}

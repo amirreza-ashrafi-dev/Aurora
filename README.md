@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="./resources/aurora.png" alt="Aurora Player screenshot placeholder" width="800">
+  <img src="./resources/icon.png" alt="Aurora Player screenshot placeholder" width="800">
 </p>
 
 ## About Aurora Player

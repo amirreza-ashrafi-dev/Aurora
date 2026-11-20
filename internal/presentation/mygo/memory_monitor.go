@@ -14,7 +14,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const memorySampleLimit = 120
+const memorySampleLimit = 1800
 
 // memorySample combines process-wide measurements with explicitly labelled
 // estimates for memory retained by Aurora-owned data structures.

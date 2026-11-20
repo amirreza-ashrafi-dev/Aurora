@@ -54,6 +54,12 @@ func (a *App) hideFullscreenHeader() {
 	}
 }
 
+func (a *App) hideResumeBanner() {
+	if a.resumeBanner != nil && !a.resumeBanner.IsDestroyed() {
+		a.resumeBanner.Hide()
+	}
+}
+
 func (a *App) fullscreenHeaderView(c *ui.Context) {
 	applyAuroraTheme(c)
 	c.Root().Background(ui.Transparent)
@@ -176,19 +182,24 @@ func (a *App) showController() {
 		return
 	}
 	a.updateControllerBounds()
+	a.showFullscreenHeader()
+	if a.pendingResume != nil {
+		a.showResumeBanner()
+	} else {
+		a.hideResumeBanner()
+	}
 	if !a.controller.IsVisible() {
 		a.controller.ShowInactive()
 	}
 }
 
 func (a *App) hideController() {
-	if a.controller == nil || a.controller.IsDestroyed() {
-		return
-	}
 	a.closeFullscreenSubtitleFlyout()
-	if a.controller.IsVisible() {
+	if a.controller != nil && !a.controller.IsDestroyed() && a.controller.IsVisible() {
 		a.controller.Hide()
 	}
+	a.hideFullscreenHeader()
+	a.hideResumeBanner()
 }
 
 func (a *App) startControllerMonitor() {
@@ -205,6 +216,7 @@ func (a *App) startControllerMonitor() {
 		haveLastPoint := false
 		var lastActivity, lastMouseMovement time.Time
 		wasOverlayActive, visible := false, false
+		wasResumePending := false
 		const hideDelay = 3 * time.Second
 		for {
 			select {
@@ -218,14 +230,12 @@ func (a *App) startControllerMonitor() {
 
 					overlayActive := a.win.IsFullScreen() || a.cinematicMode
 					if !overlayActive {
-						a.hideFullscreenHeader()
+						a.hideController()
 						a.closeResumeBanner()
-						if visible {
-							a.hideController()
-						}
 						visible = false
 						a.setFullscreenCursorHidden(false)
 						wasOverlayActive = false
+						wasResumePending = false
 						haveLastPoint = false
 						lastMouseMovement = time.Time{}
 						return
@@ -239,35 +249,47 @@ func (a *App) startControllerMonitor() {
 						return
 					}
 					a.updateControllerBounds()
-					a.showFullscreenHeader()
-					if a.pendingResume != nil {
-						a.showResumeBanner()
-					}
 					if !wasOverlayActive {
 						a.showController()
-						visible = true
+						visible = a.controller.IsVisible()
 						now := time.Now()
 						lastActivity, lastMouseMovement = now, now
 						haveLastPoint = false
 						wasOverlayActive = true
 					}
 
-					// Fullscreen callbacks can show the flyout while Cinematic Mode
-					// is already active. Reconcile local monitor state with the
-					// actual window visibility before applying the hide timeout.
+					// Fullscreen callbacks or a newly offered resume prompt can show
+					// the flyouts outside this monitor. Treat that transition as
+					// fresh activity so the entire overlay group gets its full delay.
 					visible = a.controller.IsVisible()
+					resumePending := a.pendingResume != nil
+					if resumePending && !wasResumePending {
+						a.showController()
+						visible = a.controller.IsVisible()
+						now := time.Now()
+						lastActivity, lastMouseMovement = now, now
+						a.setFullscreenCursorHidden(false)
+					}
+					wasResumePending = resumePending
 
 					insideMain, point := a.platform.CursorInsideWindow(a.win.NativeHandle())
 					insideController, _ := a.platform.CursorInsideWindow(a.controller.NativeHandle())
-					// The subtitle panel is a child flyout of the controller. Treat
-					// the pointer inside it as controller activity, or the auto-hide
-					// timer could hide its parent while the user is choosing a track.
-					if panel := a.fullscreenSubtitleFlyout; panel != nil && !panel.IsDestroyed() && panel.IsVisible() {
-						insidePanel, _ := a.platform.CursorInsideWindow(panel.NativeHandle())
-						insideController = insideController || insidePanel
+					// Treat every auxiliary flyout as an interactive surface. This
+					// prevents the group from hiding while the pointer is over the
+					// top bar, resume banner, or subtitle panel.
+					for _, overlay := range []*mygo.Window{
+						a.fullscreenHeader,
+						a.resumeBanner,
+						a.fullscreenSubtitleFlyout,
+					} {
+						if overlay == nil || overlay.IsDestroyed() || !overlay.IsVisible() {
+							continue
+						}
+						insideOverlay, _ := a.platform.CursorInsideWindow(overlay.NativeHandle())
+						insideController = insideController || insideOverlay
 					}
 					if !insideMain && !insideController {
-						if visible && a.pendingResume == nil {
+						if visible {
 							a.hideController()
 							visible = false
 						}
@@ -297,7 +319,7 @@ func (a *App) startControllerMonitor() {
 							visible = true
 						}
 					}
-					if visible && a.pendingResume == nil && !insideController && time.Since(lastActivity) >= hideDelay {
+					if visible && !insideController && time.Since(lastActivity) >= hideDelay {
 						a.hideController()
 						visible = false
 					}

@@ -12,31 +12,74 @@ const (
 	volumeWheelDetent = int32(120)
 	volumeStepPercent = 5.0
 	volumeOSDDuration = 1200 * time.Millisecond
+	volumeOSDWidth    = 180
+	volumeOSDHeight   = 66
 )
 
 func (a *App) handleVolumeWheel(delta int32) {
-	if a == nil || delta == 0 { return }
+	if a == nil || delta == 0 {
+		return
+	}
 	a.wheelRemainder += delta
 	steps := a.wheelRemainder / volumeWheelDetent
 	a.wheelRemainder %= volumeWheelDetent
-	if steps != 0 { a.changeVolume(float64(steps) * volumeStepPercent) }
+	if steps != 0 {
+		a.changeVolume(float64(steps) * volumeStepPercent)
+	}
+}
+
+func (a *App) volumeOSDTarget() (mygo.Rectangle, bool) {
+	if a == nil || a.win == nil || a.win.IsDestroyed() {
+		return mygo.Rectangle{}, false
+	}
+	bounds := a.win.ContentBounds()
+	if bounds.Width < 1 || bounds.Height < 1 {
+		return mygo.Rectangle{}, false
+	}
+
+	// In windowed playback, videoStageBounds is the actual MPV viewport inside
+	// the application layout. Cinematic mode also fills this stage; fullscreen
+	// expands the video host to the complete client area.
+	left, top := 0, 0
+	if !a.fullscreen && !a.win.IsFullScreen() && a.hasVideoStageBounds {
+		left = int(a.videoStageBounds.X)
+		top = int(a.videoStageBounds.Y)
+	}
+	const inset = 16
+	return mygo.Rectangle{
+		X: left + inset,
+		Y: top + inset,
+		Width: 1,
+		Height: 1,
+	}, true
 }
 
 func (a *App) showVolumeOSD() {
-	if a == nil || a.win == nil || a.win.IsDestroyed() { return }
-	bounds := a.win.ContentBounds()
-	if bounds.Width < 1 || bounds.Height < 1 { return }
-	anchor := mygo.Rectangle{X: bounds.Width/2, Y: bounds.Height/2, Width: 1, Height: 1}
+	if a == nil {
+		return
+	}
+	anchor, ok := a.volumeOSDTarget()
+	if !ok {
+		return
+	}
 	if a.volumeOSD != nil && !a.volumeOSD.IsDestroyed() {
 		a.volumeOSD.SetAnchor(anchor)
 		a.volumeOSD.Invalidate()
-		if !a.volumeOSD.IsVisible() { a.volumeOSD.ShowInactive() }
+		if !a.volumeOSD.IsVisible() {
+			a.volumeOSD.ShowInactive()
+		}
 		a.volumeOSDUntil = time.Now().Add(volumeOSDDuration)
 		return
 	}
 	a.volumeOSD = mygo.NewFlyout(mygo.FlyoutOptions{
-		Parent: a.win, Anchor: anchor, Placement: mygo.PlacementBottom,
-		Gap: 0, Width: 190, Height: 62, Focusable: false, Hidden: true,
+		Parent: a.win,
+		Anchor: anchor,
+		Placement: mygo.PlacementBottom,
+		Gap: 0,
+		Width: volumeOSDWidth,
+		Height: volumeOSDHeight,
+		Focusable: false,
+		Hidden: true,
 		Content: ui.View(a.volumeOSDView),
 	})
 	a.volumeOSDUntil = time.Now().Add(volumeOSDDuration)
@@ -44,13 +87,17 @@ func (a *App) showVolumeOSD() {
 }
 
 func (a *App) hideVolumeOSD() {
-	if a.volumeOSD != nil && !a.volumeOSD.IsDestroyed() && a.volumeOSD.IsVisible() { a.volumeOSD.Hide() }
+	if a.volumeOSD != nil && !a.volumeOSD.IsDestroyed() && a.volumeOSD.IsVisible() {
+		a.volumeOSD.Hide()
+	}
 	a.volumeOSDUntil = time.Time{}
 }
 
 func (a *App) closeVolumeOSD() {
 	if a.volumeOSD != nil {
-		if !a.volumeOSD.IsDestroyed() { a.volumeOSD.Destroy() }
+		if !a.volumeOSD.IsDestroyed() {
+			a.volumeOSD.Destroy()
+		}
 		a.volumeOSD = nil
 	}
 	a.volumeOSDUntil = time.Time{}
@@ -59,15 +106,41 @@ func (a *App) closeVolumeOSD() {
 func (a *App) volumeOSDView(c *ui.Context) {
 	applyAuroraTheme(c)
 	c.Root().Background(ui.Transparent)
+
 	volume := a.state.Volume
-	if volume < 0 { volume = 0 }
-	if volume > 100 { volume = 100 }
-	ui.Column(c).Fill().Padding(10).Children(func() {
-		ui.Column(c).Fill().Padding(10).Gap(5).
-			Background(ui.Hex("#11100D")).Border(1, ui.Hex("#80672D")).Radius(12).
+	if volume < 0 {
+		volume = 0
+	}
+	if volume > 100 {
+		volume = 100
+	}
+
+	// Keep the percentage in a fixed-width, single-line slot. The previous
+	// stacked labels relied on intrinsic sizing and could overflow at 100%.
+	ui.Column(c).Fill().Padding(4).Children(func() {
+		ui.Column(c).Fill().Padding(10, 12).Gap(6).
+			Background(ui.Hex("#11100D")).
+			Border(1, ui.Hex("#80672D")).
+			Radius(12).
 			Children(func() {
-				ui.Text(c, "VOLUME").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
-				ui.Text(c, fmt.Sprintf("%.0f%%", volume)).FontSize(20).Bold().TextColor(ui.Hex(auroraAccent))
+				ui.Row(c).FillWidth().AlignItems(ui.Center).Gap(8).Children(func() {
+					ui.Text(c, "VOLUME").
+						FontSize(8).Bold().LetterSpacing(1.1).
+						TextColor(ui.Hex(auroraMuted))
+					ui.Spacer(c)
+					ui.Text(c, fmt.Sprintf("%.0f%%", volume)).
+						Width(58).SingleLine().
+						FontSize(16).Bold().
+						TextColor(ui.Hex(auroraAccent))
+				})
+				ui.Box(c).FillWidth().Height(4).Radius(2).
+					Background(ui.Hex("#393326")).Clip().
+					Children(func() {
+						if volume > 0 {
+							ui.Box(c).Width(float32(volume) * 1.52).Height(4).
+								Radius(2).Background(ui.Hex(auroraAccent))
+						}
+					})
 			})
 	})
 }

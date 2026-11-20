@@ -102,33 +102,87 @@ func (a *App) normalView(c *ui.Context) {
 							} else {
 								ui.List(c, nil, len(a.playlist), func(i int) {
 									index := i
-									label := filepath.Base(a.playlist[i])
-									ui.Row(c).FillWidth().Height(48).Gap(6).Children(func() {
-										item := ui.Button(c, label).
-											Grow(1).Height(48).Padding(9, 11).
-											Radius(9).NoWrap().Ellipsis("…")
-										if i == a.playlistPos {
-											item = item.Selected(true).
-												Background(ui.Hex(auroraAccentSoft)).
-												Border(1, ui.Hex("#80672D")).
-												TextColor(ui.Hex("#F4E6BD"))
-										} else {
-											item = item.Background(ui.Hex("#181611")).
-												Border(1, ui.Hex(auroraBorderSoft)).
-												TextColor(ui.Hex("#D2CCBE"))
+									mediaPath := a.playlist[i]
+									title := queueCardTitle(mediaPath)
+									_, hasThumbnail := a.queueThumbnails[mediaPath]
+									active := i == a.playlistPos
+									cardBorder := auroraBorderSoft
+									if active {
+										cardBorder = "#80672D"
+									}
+									ui.Column(c).FillWidth().Gap(6).Children(func() {
+										card := ui.Button(c, "").
+											Label("Play "+title).
+											FillWidth().Height(154).
+											Padding(7).Radius(11).
+											Background(ui.Hex("#171510")).
+											Border(1, ui.Hex(cardBorder))
+										if active {
+											card.Background(ui.Hex("#211C10"))
 										}
-										if item.Clicked() {
+										card.Children(func() {
+											ui.Box(c).FillWidth().Height(84).
+												Radius(7).Clip().
+												Background(ui.Hex("#090807")).
+												Children(func() {
+													if bitmap := a.queueThumbnails[mediaPath]; bitmap != nil {
+														ui.Image(c, bitmap).FillWidth().FillHeight().Fit(ui.Cover).Radius(7)
+													} else {
+														ui.Column(c).Fill().Center().Gap(5).Children(func() {
+															ui.Text(c, "A U R O R A").
+																FontSize(8).Bold().LetterSpacing(2).
+																TextColor(ui.Hex("#8D7338"))
+															ui.Text(c, "▶").
+																FontSize(18).TextColor(ui.Hex("#DDBB53"))
+														})
+													}
+													if active {
+														ui.Text(c, "PLAYING").
+															FontSize(7).Bold().LetterSpacing(1).
+															Padding(5, 7).Radius(5).
+															Background(ui.Hex("#DDBB53")).
+															TextColor(ui.Hex("#17130A"))
+													}
+												})
+											ui.Row(c).FillWidth().Gap(5).AlignItems(ui.Center).Children(func() {
+												ui.Column(c).Grow(1).Gap(3).Children(func() {
+													titleColor := auroraText
+													if active { titleColor = "#F2D995" }
+													ui.Text(c, title).FontSize(10).Bold().
+														TextColor(ui.Hex(titleColor)).Ellipsis("…")
+													ui.Text(c, queueCardFormat(mediaPath)).
+														FontSize(7).LetterSpacing(0.9).
+														TextColor(ui.Hex(auroraMuted))
+												})
+												ui.Text(c, "⋮").
+													FontSize(15).Padding(2, 5).
+													TextColor(ui.Hex(auroraMuted))
+											})
+										})
+										if card.Clicked() {
 											a.playPlaylistIndex(index)
 										}
-										ui.Button(c, "×").
-											Width(32).Height(48).Padding(0).Radius(9).
-											Background(ui.Hex("#1B1812")).
-											Border(1, ui.Hex(auroraBorderSoft)).
-											TextColor(ui.Hex(auroraMuted)).
-											Tooltip("Remove from queue").
-											OnClick(func() { a.removePlaylistIndex(index) })
+										ui.Row(c).FillWidth().Gap(5).Children(func() {
+											ui.Box(c).Grow(1).Height(2).Radius(1).
+												Background(ui.Hex("#29251C"))
+											if active {
+												ui.Box(c).Width(44).Height(2).Radius(1).
+													Background(ui.Hex(auroraAccent))
+											}
+											ui.Spacer(c)
+											remove := ui.Button(c, "Remove").
+												FontSize(7).Padding(3, 7).Radius(6).
+												Background(ui.Transparent).
+												Border(1, ui.Hex(auroraBorderSoft)).
+												TextColor(ui.Hex(auroraMuted)).
+												Tooltip("Remove from queue")
+											if remove.Clicked() {
+												a.removePlaylistIndex(index)
+											}
+										})
 									})
-								}).Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(0).Gap(8)
+									_ = hasThumbnail
+								}).Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(0).Gap(10)
 							}
 
 							ui.Column(c).Shrink(0).Gap(8).Children(func() {

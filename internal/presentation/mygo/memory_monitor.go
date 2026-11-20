@@ -14,7 +14,7 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-const memorySampleLimit = 1800
+const memorySampleLimit = 120
 
 // memorySample combines process-wide measurements with explicitly labelled
 // estimates for memory retained by Aurora-owned data structures.
@@ -183,6 +183,14 @@ func (a *App) captureMemorySample(event ...string) {
 		sample.HistoryEstimateBytes += uint64(len(key) + len(record.MediaPath) + 64)
 	}
 
+	// Periodic samples normally have no event label. Mark a GC observed
+	// between samples so CSV readers can correlate heap drops with collections.
+	if sample.Event == "" && len(a.memorySamples) > 0 {
+		previous := a.memorySamples[len(a.memorySamples)-1]
+		if sample.GoGCCycles > previous.GoGCCycles {
+			sample.Event = "gc_observed"
+		}
+	}
 	if len(a.memorySamples) >= memorySampleLimit {
 		copy(a.memorySamples, a.memorySamples[1:])
 		a.memorySamples = a.memorySamples[:memorySampleLimit-1]

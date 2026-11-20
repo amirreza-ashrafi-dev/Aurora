@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	mygo "github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -22,6 +23,9 @@ type App struct {
 	resumeBannerAnchor    mygo.Rectangle
 	fullscreenHeader     *mygo.Window
 	fullscreenHeaderAnchor mygo.Rectangle
+	volumeOSD *mygo.Window
+	volumeOSDUntil time.Time
+	wheelRemainder int32
 
 	platform      application.NativePlatform
 	videoHWND     uintptr
@@ -151,6 +155,14 @@ func (a *App) onReady() {
 		})
 	}); err != nil {
 		log.Printf("install video subtitle drop handler: %v", err)
+	}
+	if err := a.platform.InstallVideoMouseWheel(a.videoHWND, func(delta int32) {
+		if a.win == nil || a.win.IsDestroyed() { return }
+		a.win.Update(func() {
+			if !a.win.IsDestroyed() { a.handleVolumeWheel(delta) }
+		})
+	}); err != nil {
+		log.Printf("install video mouse-wheel handler: %v", err)
 	}
 
 	if a.playerFactory != nil {

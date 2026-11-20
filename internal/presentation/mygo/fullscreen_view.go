@@ -17,9 +17,14 @@ func (a *App) fullscreenControls(c *ui.Context) {
 			Radius(16).
 			Children(func() {
 			ui.Row(c).Height(34).Gap(10).Children(func() {
-				ui.Column(c).Gap(1).Children(func() {
-					ui.Text(c, a.currentTitle()).FontSize(14).Bold().TextColor(ui.Hex(auroraText)).Ellipsis("…")
-					ui.Text(c, "AURORA  /  NOW PLAYING").FontSize(8).LetterSpacing(1.4).TextColor(ui.Hex(auroraAccent))
+				title := a.currentTitle()
+				ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(1).Children(func() {
+					ui.Text(c, title).FillWidth().MinWidth(0).NoWrap().
+						FontSize(14).Bold().
+						TextColor(ui.Hex(auroraText)).
+						Ellipsis("…").Tooltip(title)
+					ui.Text(c, "AURORA  /  NOW PLAYING").FontSize(8).
+						LetterSpacing(1.4).TextColor(ui.Hex(auroraAccent))
 				})
 				ui.Spacer(c)
 				cinemaLabel := "Cinematic"

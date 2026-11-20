@@ -6,8 +6,8 @@ This document records the visual specifications taken from the Aurora Figma file
 
 - Product: Aurora Cinema Player
 - Display typeface target: Nimbus Sans
-- Selected open alternative: TeX Gyre Heros (Nimbus Sans L-derived). Font files are not yet bundled; Arial remains the current system fallback until the font assets are added
-- Primary logo: the complete 512 × 512 gold Aurora logo supplied separately by the user in chat. Do not substitute the older ZIP logo.
+- Closest system fallback: Segoe UI, selected to keep the UI visually consistent with the supplied reference. Nimbus Sans / TeX Gyre Heros font files are not bundled yet
+- Primary logo: the supplied 512 × 512 gold Aurora logo, embedded as `internal/presentation/mygo/assets/logo.png` and used in the title bar and empty states. Do not substitute the older ZIP logo.
 - Logo treatment: preserve the full composition, including the circular geometric mark and AURORA CINEMA PLAYER wordmark. The user explicitly requests the full logo for the taskbar icon too.
 
 ## Color palette
@@ -94,7 +94,6 @@ Preserve the Figma section order and existing functionality:
 
 ## Remaining asset work
 
-- Add the exact 512 × 512 logo image supplied separately in chat as a local embedded asset and set `mygo.json`'s `icon` field to `resources/icon.png`; preserve the full composition for the taskbar and packaged application icon.
-- Confirm the taskbar icon rendering at common Windows shell sizes (16, 24, 32, 48, 256 px).
-- Bundle TeX Gyre Heros font files with their GUST Font License notice once the exact upstream distribution files have been added to the repository.
+- Verify the packaged and development taskbar icons from `resources/icon.png` and `resources/icon-dev.png` at common Windows shell sizes (16, 24, 32, 48, 256 px).
+- Bundle TeX Gyre Heros font files with their GUST Font License notice when the upstream font files can be added; until then, use Segoe UI as the system fallback.
 - Re-export exact Figma color, typography, gradient, shadow and component variables when available. Current values above distinguish sampled reference colors from confirmed measurements.

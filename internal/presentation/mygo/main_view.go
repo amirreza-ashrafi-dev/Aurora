@@ -116,14 +116,14 @@ func (a *App) normalView(c *ui.Context) {
 										Radius(10).Children(func() {
 											play := ui.Button(c, "").
 												Label("Play "+title).
-												Grow(1).Height(68).
+												Grow(1).Shrink(1).MinWidth(0).Height(68).
 												Padding(0).Radius(6).
 												Background(ui.Transparent).
 												Border(0, ui.Transparent)
 											play.Children(func() {
-												ui.Row(c).Fill().Gap(9).
+												ui.Row(c).Fill().Grow(1).Shrink(1).MinWidth(0).Gap(9).
 													AlignItems(ui.Center).Children(func() {
-														ui.Box(c).Width(86).Height(54).
+														ui.Box(c).Width(86).Height(54).Shrink(0).
 															Radius(6).Clip().
 															Background(ui.Hex("#090807")).
 															Children(func() {
@@ -141,11 +141,11 @@ func (a *App) normalView(c *ui.Context) {
 																		})
 																}
 															})
-														ui.Column(c).Grow(1).Gap(4).
+														ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(4).
 															AlignItems(ui.Start).Children(func() {
 																titleColor := auroraText
 																if active { titleColor = "#F2D995" }
-																ui.Text(c, title).FillWidth().
+																ui.Text(c, title).FillWidth().MinWidth(0).NoWrap().
 																	FontSize(10).Bold().
 																	TextColor(ui.Hex(titleColor)).
 																	Ellipsis("…")
@@ -159,7 +159,7 @@ func (a *App) normalView(c *ui.Context) {
 																	meta = resolution + formatTime(a.state.Position) +
 																		" / " + formatTime(a.state.Duration)
 																}
-																ui.Text(c, meta).FillWidth().
+																ui.Text(c, meta).FillWidth().MinWidth(0).NoWrap().
 																	FontSize(7).LetterSpacing(0.35).
 																	TextColor(ui.Hex(auroraMuted)).
 																	Ellipsis("…")
@@ -192,7 +192,7 @@ func (a *App) normalView(c *ui.Context) {
 												a.playPlaylistIndex(index)
 											}
 											remove := ui.Button(c, "×").
-												Width(22).Height(28).
+												Width(22).MinWidth(22).Shrink(0).Height(28).
 												Padding(0).Radius(6).
 												Background(ui.Transparent).
 												Border(0, ui.Transparent).

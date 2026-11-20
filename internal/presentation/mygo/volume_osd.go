@@ -37,18 +37,50 @@ func (a *App) volumeOSDTarget() (mygo.Rectangle, bool) {
 		return mygo.Rectangle{}, false
 	}
 
-	// In windowed playback, videoStageBounds is the actual MPV viewport inside
-	// the application layout. Cinematic mode also fills this stage; fullscreen
-	// expands the video host to the complete client area.
+	// Use the real video viewport in windowed and Cinematic Mode. Fullscreen
+	// uses the whole client area because the native MPV child fills that area.
 	left, top := 0, 0
+	viewportWidth, viewportHeight := bounds.Width, bounds.Height
 	if !a.fullscreen && !a.win.IsFullScreen() && a.hasVideoStageBounds {
 		left = int(a.videoStageBounds.X)
 		top = int(a.videoStageBounds.Y)
+		viewportWidth = int(a.videoStageBounds.W)
+		viewportHeight = int(a.videoStageBounds.H)
 	}
+	if viewportWidth <= 0 || viewportHeight <= 0 {
+		return mygo.Rectangle{}, false
+	}
+
+	// MyGo's bottom flyout placement centers the popup on its anchor. Anchor
+	// at the center of the desired card rectangle, not at its left edge; this
+	// keeps the entire 180-DIP indicator inside the video/window.
 	const inset = 16
+	cardLeft := left + inset
+	maxCardLeft := left + viewportWidth - inset - volumeOSDWidth
+	if maxCardLeft < cardLeft {
+		// Narrow viewport fallback: center the indicator in the video region.
+		cardLeft = left + (viewportWidth-volumeOSDWidth)/2
+	}
+	if cardLeft < 0 {
+		cardLeft = 0
+	}
+	if cardLeft+volumeOSDWidth > bounds.Width {
+		cardLeft = bounds.Width - volumeOSDWidth
+		if cardLeft < 0 {
+			cardLeft = 0
+		}
+	}
+
+	cardTop := top + inset
+	if cardTop+volumeOSDHeight > bounds.Height {
+		cardTop = bounds.Height - volumeOSDHeight
+		if cardTop < 0 {
+			cardTop = 0
+		}
+	}
 	return mygo.Rectangle{
-		X: left + inset,
-		Y: top + inset,
+		X: cardLeft + volumeOSDWidth/2,
+		Y: cardTop,
 		Width: 1,
 		Height: 1,
 	}, true

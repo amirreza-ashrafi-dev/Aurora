@@ -178,42 +178,24 @@ func (a *App) onReady() {
 		log.Printf("install video mouse-wheel handler: %v", err)
 	}
 
-	if a.playerFactory != nil {
-		a.player, err = a.playerFactory(a.videoHWND)
-	}
-	if err != nil {
-		a.status = err.Error()
-		log.Println(err)
-	} else if a.player == nil {
-		a.status = "libmpv is not initialized"
-	} else {
-		a.status = "Ready — add videos to your playlist"
-		if err := a.player.SetVolume(a.state.Volume); err != nil {
-			a.status = err.Error()
+	// Keep libmpv unloaded until the first valid video is added. The native
+	// video host already exists, so the player can attach to it on demand.
+	a.status = "Ready — add videos to your playlist"
+	a.loadProgressHistory()
+	a.loadSubtitleAssignments()
+	if a.subtitlePreferences != nil {
+		prefs, prefErr := a.subtitlePreferences.Load()
+		if prefErr != nil {
+			log.Printf("load subtitle preferences: %v", prefErr)
+		} else {
+			a.subtitlePrefs = prefs
+			a.subtitleStyle = application.SubtitleStyleForLanguage(prefs, "und")
 		}
-		a.loadProgressHistory()
-		a.loadSubtitleAssignments()
-		a.win.OnFileDrop(func(event *mygo.FileDropEvent) {
-			if event == nil { return }
-			a.handleDroppedSubtitleFiles(event.Paths)
-		})
-		a.subtitle, _ = a.player.(application.SubtitlePlayer)
-		if a.subtitlePreferences != nil {
-			prefs, prefErr := a.subtitlePreferences.Load()
-			if prefErr != nil {
-				log.Printf("load subtitle preferences: %v", prefErr)
-			} else {
-				a.subtitlePrefs = prefs
-				a.subtitleStyle = application.SubtitleStyleForLanguage(prefs, "und")
-				if a.subtitle != nil {
-					if styleErr := a.subtitle.SetSubtitleStyle(a.subtitleStyle); styleErr != nil {
-						log.Printf("apply default subtitle style: %v", styleErr)
-					}
-				}
-			}
-		}
-		a.startPolling()
 	}
+	a.win.OnFileDrop(func(event *mygo.FileDropEvent) {
+		if event == nil { return }
+		a.handleDroppedSubtitleFiles(event.Paths)
+	})
 
 	a.win.OnReadyToShow(func() {
 		a.createFullscreenController()
@@ -256,6 +238,44 @@ func (a *App) onReady() {
 		a.updateControllerBounds()
 		a.logDiagnostics("leave-fullscreen")
 	})
+}
+
+
+// ensurePlayer initializes libmpv only when a valid video is about to be
+// loaded. This keeps the empty player free of MPV's decoder and render stack.
+func (a *App) ensurePlayer() error {
+	if a == nil {
+		return fmt.Errorf("player is unavailable")
+	}
+	if a.player != nil {
+		return nil
+	}
+	if a.playerFactory == nil {
+		return fmt.Errorf("MPV player is unavailable on this platform")
+	}
+	if a.videoHWND == 0 {
+		return fmt.Errorf("video surface is not ready")
+	}
+	player, err := a.playerFactory(a.videoHWND)
+	if err != nil {
+		return err
+	}
+	if player == nil {
+		return fmt.Errorf("MPV player factory returned no player")
+	}
+	if err := player.SetVolume(a.state.Volume); err != nil {
+		player.Close()
+		return fmt.Errorf("set initial player volume: %w", err)
+	}
+	a.player = player
+	a.subtitle, _ = player.(application.SubtitlePlayer)
+	if a.subtitle != nil {
+		if err := a.subtitle.SetSubtitleStyle(a.subtitleStyle); err != nil {
+			log.Printf("apply default subtitle style: %v", err)
+		}
+	}
+	a.startPolling()
+	return nil
 }
 
 func formatTime(seconds float64) string {

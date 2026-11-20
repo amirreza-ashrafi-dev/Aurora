@@ -58,6 +58,7 @@ type App struct {
 	videoStageDPI           uint32
 	hasVideoStageBounds     bool
 	videoLayoutFramePending bool
+	videoHeight             int
 
 	path        string
 	playlist    []string

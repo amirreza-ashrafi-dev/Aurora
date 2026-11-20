@@ -191,9 +191,9 @@ func (a *App) captureMemorySample(event ...string) {
 }
 
 
- // collectMemoryGC records comparable process/runtime samples immediately
- // before and after a full Go garbage collection. The collection runs away
- // from the UI thread; all sample-slice mutations remain on the UI thread.
+// collectMemoryGC records comparable process/runtime samples immediately
+// before and after a full Go garbage collection. The collection runs away
+// from the UI thread; all sample-slice mutations remain on the UI thread.
 func (a *App) collectMemoryGC() {
 	if a == nil || a.memoryGCInProgress || a.memoryWindow == nil || a.memoryWindow.IsDestroyed() {
 		return

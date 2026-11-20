@@ -6,7 +6,7 @@ This document records the visual specifications taken from the Aurora Figma file
 
 - Product: Aurora Cinema Player
 - Display typeface target: Nimbus Sans
-- Bundled open alternative: TeX Gyre Heros (Nimbus Sans L-derived), with Arial as a system fallback
+- Selected open alternative: TeX Gyre Heros (Nimbus Sans L-derived). Font files are not yet bundled; Arial remains the current system fallback until the font assets are added
 - Primary logo: the complete 512 × 512 gold Aurora logo supplied separately by the user in chat. Do not substitute the older ZIP logo.
 - Logo treatment: preserve the full composition, including the circular geometric mark and AURORA CINEMA PLAYER wordmark. The user explicitly requests the full logo for the taskbar icon too.
 

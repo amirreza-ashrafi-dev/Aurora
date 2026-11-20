@@ -36,8 +36,10 @@ type Platform struct {
 	shell32    xwindows.Handle
 	videoProc  uintptr
 	dropProc   uintptr
+	wheelProc  uintptr
 	subclassID uintptr
 	dropSubclassID uintptr
+	wheelSubclassID uintptr
 
 	dragAcceptFiles func(uintptr, int32)
 	dragQueryFileW func(uintptr, uint32, *uint16, uint32) uint32
@@ -81,7 +83,7 @@ func New() (*Platform, error) {
 		xwindows.FreeLibrary(dll)
 		return nil, err
 	}
-	p := &Platform{dll: dll, comctl32: comctl, shell32: shell, subclassID: 1, dropSubclassID: 2}
+	p := &Platform{dll: dll, comctl32: comctl, shell32: shell, subclassID: 1, dropSubclassID: 2, wheelSubclassID: 3}
 	h, ch, sh := uintptr(dll), uintptr(comctl), uintptr(shell)
 	purego.RegisterLibFunc(&p.createWindowEx, h, "CreateWindowExW")
 	purego.RegisterLibFunc(&p.showWindow, h, "ShowWindow")
@@ -143,6 +145,24 @@ func (p *Platform) InstallVideoDoubleClick(hwnd uintptr, onDoubleClick func()) e
 		return fmt.Errorf("SetWindowSubclass failed")
 	}
 	p.videoProc = callback
+	return nil
+}
+
+// InstallVideoMouseWheel consumes vertical wheel messages over the video HWND.
+func (p *Platform) InstallVideoMouseWheel(hwnd uintptr, onWheel func(int32)) error {
+	if hwnd == 0 { return fmt.Errorf("video window is not initialized") }
+	if p.wheelProc != 0 { return fmt.Errorf("video mouse-wheel handler is already installed") }
+	const wmMouseWheel uint32 = 0x020A
+	callback := purego.NewCallback(func(window uintptr, message uint32, wParam uintptr, lParam uintptr, subclassID uintptr, refData uintptr) uintptr {
+		if message == wmMouseWheel {
+			delta := int32(int16((wParam >> 16) & 0xffff))
+			if delta != 0 && onWheel != nil { onWheel(delta) }
+			return 0
+		}
+		return p.defSubclassProc(window, message, wParam, lParam)
+	})
+	if p.setWindowSubclass(hwnd, callback, p.wheelSubclassID, 0) == 0 { return fmt.Errorf("SetWindowSubclass for mouse wheel failed") }
+	p.wheelProc = callback
 	return nil
 }
 
@@ -273,6 +293,10 @@ func (p *Platform) RemoveVideoSubclass(hwnd uintptr) {
 		p.removeWindowSubclass(hwnd, p.dropProc, p.dropSubclassID)
 		p.dragAcceptFiles(hwnd, 0)
 		p.dropProc = 0
+	}
+	if p.wheelProc != 0 {
+		p.removeWindowSubclass(hwnd, p.wheelProc, p.wheelSubclassID)
+		p.wheelProc = 0
 	}
 }
 

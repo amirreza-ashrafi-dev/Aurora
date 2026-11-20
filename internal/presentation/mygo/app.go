@@ -269,8 +269,10 @@ func (a *App) ensurePlayer() error {
 		player.Close()
 		return fmt.Errorf("set initial player volume: %w", err)
 	}
+	a.playerCommandMu.Lock()
 	a.player = player
 	a.subtitle, _ = player.(application.SubtitlePlayer)
+	a.playerCommandMu.Unlock()
 	if a.subtitle != nil {
 		if err := a.subtitle.SetSubtitleStyle(a.subtitleStyle); err != nil {
 			log.Printf("apply default subtitle style: %v", err)

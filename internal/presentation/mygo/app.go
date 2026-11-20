@@ -17,7 +17,8 @@ import (
 type App struct {
 	win          *mygo.Window
 	controller   *mygo.Window
-	resumeBanner *mygo.Window
+	resumeBanner    *mygo.Window
+	fullscreenHeader *mygo.Window
 
 	platform      application.NativePlatform
 	videoHWND     uintptr

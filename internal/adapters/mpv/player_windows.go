@@ -167,6 +167,21 @@ func (p *Player) RemovePlaylistItem(index int) error {
 	return p.commandArgs("playlist-remove", strconv.Itoa(index))
 }
 
+// GetVideoHeight returns the decoded video's display height in pixels.
+func (p *Player) GetVideoHeight() (int, error) {
+	height, err := p.getInt64("height")
+	if err != nil {
+		height, err = p.getInt64("video-params/h")
+	}
+	if err != nil {
+		return 0, err
+	}
+	if height < 0 {
+		return 0, fmt.Errorf("MPV returned a negative video height")
+	}
+	return int(height), nil
+}
+
 func (p *Player) getInt64(name string) (int64, error) {
 	if p == nil || p.ctx == nil { return 0, fmt.Errorf("mpv is not initialized") }
 	var value int64

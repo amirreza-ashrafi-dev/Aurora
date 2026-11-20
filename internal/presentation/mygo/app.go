@@ -284,6 +284,18 @@ func (a *App) ensurePlayer() error {
 	return nil
 }
 
+// unloadPlayerMedia stops the current media while preserving the initialized MPV context.
+func (a *App) unloadPlayerMedia() error {
+	if a == nil { return nil }
+	a.playerCommandMu.Lock()
+	defer a.playerCommandMu.Unlock()
+	if a.player == nil { return nil }
+	if player, ok := a.player.(interface{ Unload() error }); ok {
+		return player.Unload()
+	}
+	return a.player.Stop()
+}
+
 // closePlayer waits for any in-flight background MPV command before destroying
 // the context or unloading its DLL. Callers must stop the polling goroutine first.
 func (a *App) closePlayer() {

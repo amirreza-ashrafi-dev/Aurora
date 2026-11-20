@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	controllerWidth  = 820
-	controllerHeight = 240
+	controllerWidth  = 896
+	controllerHeight = 194
 	controllerBottom = 24
 )
 

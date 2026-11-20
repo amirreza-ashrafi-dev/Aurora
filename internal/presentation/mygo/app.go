@@ -31,8 +31,11 @@ type App struct {
 	memoryMonitorStop chan struct{}
 	memorySamples []memorySample
 	memoryExportPath string
+	memoryGCInProgress bool
 	thumbnailRasterBytes map[string]uint64
 	thumbnailEncodedBytes map[string]uint64
+	thumbnailCaptureTokens map[string]uint64
+	thumbnailCaptureSequence uint64
 
 	platform      application.NativePlatform
 	videoHWND     uintptr
@@ -112,6 +115,7 @@ func New(platform application.NativePlatform, playerFactory application.PlayerFa
 		thumbnailCaptured: make(map[string]bool),
 		thumbnailRasterBytes: make(map[string]uint64),
 		thumbnailEncodedBytes: make(map[string]uint64),
+		thumbnailCaptureTokens: make(map[string]uint64),
 		subtitlePrefs: domain.SubtitlePreferences{Global: domain.DefaultSubtitleStyle()},
 		subtitleStyle: domain.DefaultSubtitleStyle(),
 		historyRecords: make(map[string]domain.PlaybackProgress),

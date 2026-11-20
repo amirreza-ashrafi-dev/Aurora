@@ -8,6 +8,11 @@ func (a *App) Close() {
 		a.closeFullscreenSubtitleFlyout()
 		a.closeResumeBanner()
 		a.closeVolumeOSD()
+		a.stopMemoryMonitor()
+		if a.memoryWindow != nil && !a.memoryWindow.IsDestroyed() {
+			a.memoryWindow.Destroy()
+			a.memoryWindow = nil
+		}
 		if a.fullscreenHeader != nil && !a.fullscreenHeader.IsDestroyed() {
 			a.fullscreenHeader.Destroy()
 			a.fullscreenHeader = nil

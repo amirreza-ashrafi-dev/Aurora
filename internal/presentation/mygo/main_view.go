@@ -146,7 +146,7 @@ func (a *App) normalView(c *ui.Context) {
 																titleColor := auroraText
 																if active { titleColor = "#F2D995" }
 																ui.Text(c, title).FillWidth().
-																	FontSize(9).Bold().
+																	FontSize(10).Bold().
 																	TextColor(ui.Hex(titleColor)).
 																	Ellipsis("…")
 																meta := strings.ToUpper(strings.TrimPrefix(filepath.Ext(mediaPath), "."))
@@ -176,6 +176,12 @@ func (a *App) normalView(c *ui.Context) {
 																		} else {
 																			ui.Text(c, "IN QUEUE").
 																				FontSize(7).LetterSpacing(0.5).
+																				TextColor(ui.Hex(auroraMuted))
+																		}
+																		extension := strings.ToUpper(strings.TrimPrefix(filepath.Ext(mediaPath), "."))
+																		if extension != "" {
+																			ui.Text(c, "."+extension).
+																				FontSize(7).LetterSpacing(0.4).
 																				TextColor(ui.Hex(auroraMuted))
 																		}
 																	})

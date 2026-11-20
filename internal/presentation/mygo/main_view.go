@@ -2,7 +2,6 @@ package presentation
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -181,7 +180,6 @@ func (a *App) normalView(c *ui.Context) {
 											}
 										})
 									})
-									_ = hasThumbnail
 								}).Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(0).Gap(10)
 							}
 

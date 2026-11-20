@@ -28,6 +28,10 @@ func (a *App) startPolling() {
 				position, posErr := a.player.GetDouble("time-pos")
 				duration, durErr := a.player.GetDouble("duration")
 				playlistPos, playlistErr := a.player.GetDouble("playlist-pos")
+				videoHeight, videoHeightErr := 0, error(nil)
+				if metadata, ok := a.player.(interface{ GetVideoHeight() (int, error) }); ok {
+					videoHeight, videoHeightErr = metadata.GetVideoHeight()
+				}
 				a.win.Update(func() {
 					if a.win.IsDestroyed() {
 						return
@@ -43,6 +47,7 @@ func (a *App) startPolling() {
 							a.path = a.playlist[index]
 							a.state.Position = 0
 							a.state.Duration = 0
+							a.videoHeight = 0
 							a.state.Paused = false
 							a.status = "Playing: " + filepath.Base(a.path)
 							a.resetSubtitleDelay()
@@ -54,6 +59,9 @@ func (a *App) startPolling() {
 					}
 					if durErr == nil && duration > 0 {
 						a.state.Duration = duration
+					}
+					if videoHeightErr == nil && videoHeight > 0 {
+						a.videoHeight = videoHeight
 					}
 					// Capture one representative frame after the decoder has
 					// had time to produce a stable image for this queue item.

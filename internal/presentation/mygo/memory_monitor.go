@@ -20,6 +20,7 @@ const memorySampleLimit = 120
 // estimates for memory retained by Aurora-owned data structures.
 type memorySample struct {
 	CapturedAt time.Time
+	Event      string
 
 	WorkingSetBytes     uint64
 	PrivateBytes        uint64
@@ -60,6 +61,7 @@ func (a *App) toggleMemoryMonitor() {
 
 	a.memorySamples = nil
 	a.memoryExportPath = ""
+	a.memoryGCInProgress = false
 	a.memoryWindow = mygo.NewWindow(mygo.WindowOptions{
 		Title:      "Aurora Memory Diagnostics",
 		Parent:     a.win,
@@ -76,7 +78,7 @@ func (a *App) toggleMemoryMonitor() {
 			a.memoryWindow = nil
 		}
 	})
-	a.captureMemorySample()
+	a.captureMemorySample("monitor_open")
 	a.startMemoryMonitor(window)
 }
 
@@ -112,17 +114,22 @@ func (a *App) stopMemoryMonitor() {
 	}
 }
 
-func (a *App) captureMemorySample() {
+func (a *App) captureMemorySample(event ...string) {
 	if a == nil {
 		return
 	}
 
+	eventLabel := ""
+	if len(event) > 0 {
+		eventLabel = event[0]
+	}
 	var stats runtime.MemStats
 	runtime.ReadMemStats(&stats)
 	process, processErr := readProcessMemorySnapshot()
 
 	sample := memorySample{
 		CapturedAt:          time.Now(),
+		Event:               eventLabel,
 		ProcessAvailable:    processErr == nil,
 		GoHeapAllocBytes:    stats.HeapAlloc,
 		GoHeapInuseBytes:    stats.HeapInuse,
@@ -183,6 +190,32 @@ func (a *App) captureMemorySample() {
 	a.memorySamples = append(a.memorySamples, sample)
 }
 
+
+ // collectMemoryGC records comparable process/runtime samples immediately
+ // before and after a full Go garbage collection. The collection runs away
+ // from the UI thread; all sample-slice mutations remain on the UI thread.
+func (a *App) collectMemoryGC() {
+	if a == nil || a.memoryGCInProgress || a.memoryWindow == nil || a.memoryWindow.IsDestroyed() {
+		return
+	}
+	window := a.memoryWindow
+	a.memoryGCInProgress = true
+	a.captureMemorySample("before_gc")
+	window.Invalidate()
+
+	go func() {
+		runtime.GC()
+		window.Update(func() {
+			if a.memoryWindow != window || window.IsDestroyed() {
+				return
+			}
+			a.captureMemorySample("after_gc")
+			a.memoryGCInProgress = false
+			window.Invalidate()
+		})
+	}()
+}
+
 func (a *App) memoryMonitorView(c *ui.Context) {
 	applyAuroraTheme(c)
 	latest, hasSample := memorySample{}, len(a.memorySamples) > 0
@@ -197,8 +230,19 @@ func (a *App) memoryMonitorView(c *ui.Context) {
 				ui.Text(c, "Live process and runtime measurements · 1-second sampling").FontSize(9).TextColor(ui.Hex(auroraMuted))
 			})
 			ui.Spacer(c)
+			if ui.Button(c, "Mark baseline").Clicked() {
+				a.captureMemorySample("manual_baseline")
+				if a.memoryWindow != nil && !a.memoryWindow.IsDestroyed() { a.memoryWindow.Invalidate() }
+			}
+			if !a.memoryGCInProgress {
+				if ui.Button(c, "Collect GC").Clicked() {
+					a.collectMemoryGC()
+				}
+			} else {
+				ui.Text(c, "GC snapshot running…").FontSize(8).TextColor(ui.Hex(auroraMuted))
+			}
 			if ui.Button(c, "Refresh").Clicked() {
-				a.captureMemorySample()
+				a.captureMemorySample("manual_refresh")
 				if a.memoryWindow != nil && !a.memoryWindow.IsDestroyed() { a.memoryWindow.Invalidate() }
 			}
 			if ui.Button(c, "Export CSV").Clicked() {
@@ -346,7 +390,7 @@ func (a *App) exportMemorySamples() {
 	}
 	writer := csv.NewWriter(file)
 	header := []string{
-		"timestamp", "process_working_set_bytes", "process_private_bytes", "peak_working_set_bytes",
+		"timestamp", "sample_event", "process_working_set_bytes", "process_private_bytes", "peak_working_set_bytes",
 		"go_heap_alloc_bytes", "go_heap_inuse_bytes", "go_heap_sys_bytes", "go_stack_inuse_bytes",
 		"go_stack_sys_bytes", "go_sys_bytes", "go_total_alloc_bytes", "gc_cycles", "goroutines",
 		"thumbnail_count", "thumbnail_rgba_estimate_bytes", "thumbnail_png_bytes",
@@ -357,7 +401,7 @@ func (a *App) exportMemorySamples() {
 	for _, s := range a.memorySamples {
 		if writeErr != nil { break }
 		row := []string{
-			s.CapturedAt.Format(time.RFC3339Nano), strconv.FormatUint(s.WorkingSetBytes, 10),
+			s.CapturedAt.Format(time.RFC3339Nano), s.Event, strconv.FormatUint(s.WorkingSetBytes, 10),
 			strconv.FormatUint(s.PrivateBytes, 10), strconv.FormatUint(s.PeakWorkingSetBytes, 10),
 			strconv.FormatUint(s.GoHeapAllocBytes, 10), strconv.FormatUint(s.GoHeapInuseBytes, 10),
 			strconv.FormatUint(s.GoHeapSysBytes, 10), strconv.FormatUint(s.GoStackInuseBytes, 10),

@@ -266,7 +266,10 @@ func (a *App) showResumeBanner() {
 	}
 	anchor := mygo.Rectangle{X: bounds.Width / 2, Y: 66, Width: 1, Height: 1}
 	if a.resumeBanner != nil && !a.resumeBanner.IsDestroyed() {
-		a.resumeBanner.SetAnchor(anchor)
+		if anchor != a.resumeBannerAnchor {
+			a.resumeBanner.SetAnchor(anchor)
+			a.resumeBannerAnchor = anchor
+		}
 		if !a.resumeBanner.IsVisible() {
 			a.resumeBanner.ShowInactive()
 		}
@@ -277,6 +280,7 @@ func (a *App) showResumeBanner() {
 		Gap: 12, Width: 720, Height: 94, Focusable: false,
 		Hidden: true, Shadow: true, Content: ui.View(a.resumeBannerView),
 	})
+	a.resumeBannerAnchor = anchor
 	a.resumeBanner.ShowInactive()
 }
 
@@ -286,6 +290,7 @@ func (a *App) closeResumeBanner() {
 			a.resumeBanner.Close()
 		}
 		a.resumeBanner = nil
+		a.resumeBannerAnchor = mygo.Rectangle{}
 	}
 }
 

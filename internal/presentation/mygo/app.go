@@ -84,6 +84,7 @@ type App struct {
 	path        string
 	playlist    []string
 	playlistPos int
+	pendingPlaylistRemoval []string
 	status      string
 	state       domain.PlaybackState
 	scrubbing   bool

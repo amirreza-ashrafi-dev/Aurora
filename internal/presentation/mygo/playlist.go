@@ -109,12 +109,46 @@ func (a *App) addFiles(paths []string) {
 	}
 }
 
+// queuePlaylistRemoval defers queue mutation until the next UI frame. MyGo's
+// virtual List is still building rows when a row's Clicked query is handled;
+// mutating the backing slice during that build can invalidate later row indexes.
+func (a *App) queuePlaylistRemoval(path string) {
+	if a == nil || path == "" {
+		return
+	}
+	a.pendingPlaylistRemoval = append(a.pendingPlaylistRemoval, path)
+}
+
+// applyPendingPlaylistRemovals runs before the next view is built, so neither
+// the current frame's list builder nor its rendered thumbnail nodes observe a
+// queue slice or bitmap being removed underneath them.
+func (a *App) applyPendingPlaylistRemovals() {
+	if a == nil || len(a.pendingPlaylistRemoval) == 0 {
+		return
+	}
+	pending := a.pendingPlaylistRemoval
+	a.pendingPlaylistRemoval = nil
+	for _, path := range pending {
+		index := -1
+		for i, queuedPath := range a.playlist {
+			if strings.EqualFold(filepath.Clean(queuedPath), filepath.Clean(path)) {
+				index = i
+				break
+			}
+		}
+		if index >= 0 {
+			a.removePlaylistIndex(index)
+		}
+	}
+}
+
 func (a *App) removePlaylistIndex(index int) {
 	if a.player == nil || index < 0 || index >= len(a.playlist) {
 		return
 	}
 
 	removedPath := a.playlist[index]
+	currentWasLast := index == a.playlistPos && index == len(a.playlist)-1
 	if index == a.playlistPos {
 		a.saveCurrentProgressImmediately()
 		a.pendingResume = nil
@@ -165,13 +199,17 @@ func (a *App) removePlaylistIndex(index int) {
 	a.state.Duration = 0
 	a.state.Paused = false
 
-	// Explicitly select the resulting current item after removing the
-	// playing entry. This keeps Aurora's selected index and mpv in sync,
-	// regardless of mpv's automatic playlist advancement behavior.
-	if err := a.player.PlayIndex(nextCurrent); err != nil {
-		a.status = fmt.Sprintf("Removed %q; could not start %q: %v",
-			filepath.Base(removedPath), filepath.Base(a.path), err)
-		return
+	// MPV automatically advances to the next entry when its current
+	// playlist item is removed. Avoid issuing a second play command during
+	// that asynchronous transition. If the removed item was the final entry,
+	// there is no next item, so explicitly start the previous one selected by
+	// RemovePlaylistEntry.
+	if currentWasLast {
+		if err := a.player.PlayIndex(nextCurrent); err != nil {
+			a.status = fmt.Sprintf("Removed %q; could not start %q: %v",
+				filepath.Base(removedPath), filepath.Base(a.path), err)
+			return
+		}
 	}
 
 	a.status = fmt.Sprintf("Removed %q; playing %q",

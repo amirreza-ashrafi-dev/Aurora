@@ -253,6 +253,41 @@ func (a *App) updateTimeline(dragging, changed bool) {
 	if !dragging && (wasScrubbing || changed) { a.scheduleCurrentProgressSave() }
 }
 
+// resumePrompt keeps the ordinary-window Smart Resume choice inside the
+// main layout. Fullscreen and Cinematic Mode use the separate floating banner.
+func (a *App) resumePrompt(c *ui.Context) {
+	if a == nil || a.pendingResume == nil {
+		return
+	}
+	if a.fullscreen || a.cinematicMode || (a.win != nil && !a.win.IsDestroyed() && a.win.IsFullScreen()) {
+		return
+	}
+
+	record := *a.pendingResume
+	ui.Row(c).FillWidth().Gap(10).Padding(10, 12).
+		Background(ui.Hex("#1B1810")).
+		Border(1, ui.Hex("#80672D")).
+		Radius(10).
+		AlignItems(ui.Center).
+		Children(func() {
+			ui.Column(c).Grow(1).Gap(3).Children(func() {
+				ui.Text(c, "CONTINUE WATCHING?").
+					FontSize(9).Bold().LetterSpacing(1.1).
+					TextColor(ui.Hex(auroraAccent))
+				ui.Text(c, filepath.Base(record.MediaPath)+"  ·  "+formatTime(record.Position)).
+					FontSize(12).Bold().
+					TextColor(ui.Hex(auroraText)).
+					Ellipsis("…")
+			})
+			if auroraQuietButton(c, "Start over").Clicked() {
+				a.chooseStartOver()
+			}
+			if auroraPrimaryButton(c, "▶  Resume").Clicked() {
+				a.chooseResume()
+			}
+		})
+}
+
 func (a *App) showResumeBanner() {
 	if a == nil || a.pendingResume == nil || a.win == nil || a.win.IsDestroyed() {
 		return

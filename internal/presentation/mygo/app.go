@@ -15,8 +15,9 @@ import (
 // App coordinates MyGo windows and presentation state while depending only on
 // application ports for MPV playback and native Windows operations.
 type App struct {
-	win        *mygo.Window
-	controller *mygo.Window
+	win          *mygo.Window
+	controller   *mygo.Window
+	resumeBanner *mygo.Window
 
 	platform      application.NativePlatform
 	videoHWND     uintptr

@@ -49,7 +49,13 @@ func (a *App) captureQueueThumbnail(mediaPath string) {
 	if a.thumbnailCaptured[mediaPath] {
 		return
 	}
-	capturer, ok := a.player.(thumbnailCapturer)
+	a.playerCommandMu.RLock()
+	player := a.player
+	a.playerCommandMu.RUnlock()
+	if player == nil {
+		return
+	}
+	capturer, ok := player.(thumbnailCapturer)
 	if !ok {
 		a.thumbnailCaptured[mediaPath] = true
 		return
@@ -68,7 +74,16 @@ func (a *App) captureQueueThumbnail(mediaPath string) {
 	window := a.win
 
 	go func() {
-		data, captureErr := []byte(nil), capturer.CaptureThumbnail(path)
+		// Hold a read lock only for the native MPV call. closePlayer takes the
+		// write lock, so it cannot destroy the context or unload libmpv mid-call.
+		a.playerCommandMu.RLock()
+		if a.player != player {
+			a.playerCommandMu.RUnlock()
+			return
+		}
+		captureErr := capturer.CaptureThumbnail(path)
+		a.playerCommandMu.RUnlock()
+		data := []byte(nil)
 		width, height := 0, 0
 		if captureErr == nil {
 			data, captureErr = os.ReadFile(path)

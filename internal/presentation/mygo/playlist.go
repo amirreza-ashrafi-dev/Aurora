@@ -150,11 +150,7 @@ func (a *App) removePlaylistIndex(index int) {
 		a.subtitleCandidates = nil
 		a.hideVideoHost()
 		a.stopPolling()
-		if a.player != nil {
-			a.player.Close()
-			a.player = nil
-			a.subtitle = nil
-		}
+		a.closePlayer()
 		a.captureMemorySample("playback_stopped_player_released")
 		return
 	}

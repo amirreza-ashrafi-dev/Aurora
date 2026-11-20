@@ -122,9 +122,14 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 
 		subtitleSectionHeading(c, "FONT")
 		ui.Row(c).FillWidth().Shrink(0).Gap(5).Children(func() {
-			for _, font := range []string{"TeX Gyre Heros", "Arial", "Tahoma", "Yu Gothic"} {
+			for _, font := range []string{"Segoe UI", "Arial", "Tahoma", "Yu Gothic"} {
 				name := font
 				button := auroraQuietButton(c, name).Grow(1).NoWrap().Ellipsis("…")
+				if a.subtitleStyle.FontFamily == name {
+					button.Background(ui.Hex(auroraAccentSoft)).
+						Border(1, ui.Hex("#80672D")).
+						TextColor(ui.Hex("#EBD79D"))
+				}
 				if button.Clicked() {
 					style := a.subtitleStyle
 					style.FontFamily = name

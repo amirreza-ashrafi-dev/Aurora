@@ -190,8 +190,11 @@ func (a *App) evictQueueThumbnail(mediaPath string) {
 	delete(a.thumbnailCaptured, mediaPath)
 	if bitmap := a.queueThumbnails[mediaPath]; bitmap != nil {
 		bitmap.ReleasePixels()
-		delete(a.queueThumbnails, mediaPath)
 	}
+	// Delete the key even when its value is nil. A nil bitmap can be left by
+	// an interrupted or not-yet-completed capture, but it is still tracked
+	// queue state and must be evicted with the rest of the media's metadata.
+	delete(a.queueThumbnails, mediaPath)
 	delete(a.thumbnailRasterBytes, mediaPath)
 	delete(a.thumbnailEncodedBytes, mediaPath)
 }

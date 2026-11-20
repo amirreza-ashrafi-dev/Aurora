@@ -12,11 +12,11 @@ func (a *App) fullscreenControls(c *ui.Context) {
 	c.Root().Background(ui.Transparent)
 	ui.Column(c).Fill().Padding(9).Children(func() {
 		a.resumePrompt(c)
-		ui.Column(c).Fill().Padding(13).Gap(9).Background(ui.Hex(auroraPanel)).Border(1, ui.Hex(auroraBorder)).Radius(15).Children(func() {
+		ui.Column(c).Fill().Padding(13).Gap(9).Background(ui.Hex("#12110E")).Border(1, ui.Hex("#80672D")).Radius(15).Children(func() {
 			ui.Row(c).Height(30).Gap(10).Children(func() {
 				ui.Column(c).Gap(1).Children(func() {
 					ui.Text(c, a.currentTitle()).FontSize(14).Bold().TextColor(ui.Hex(auroraText))
-					ui.Text(c, "AURORA  /  NOW PLAYING").FontSize(8).LetterSpacing(1).TextColor(ui.Hex(auroraMuted))
+					ui.Text(c, "AURORA  /  NOW PLAYING").FontSize(8).LetterSpacing(1.2).TextColor(ui.Hex(auroraAccent))
 				})
 				ui.Spacer(c)
 				cinemaLabel := "Cinematic"

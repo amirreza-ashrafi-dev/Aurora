@@ -10,6 +10,7 @@ import (
 
 	"my-go/internal/application"
 	"my-go/internal/domain"
+	"my-go/resources"
 )
 
 // App coordinates MyGo windows and presentation state while depending only on
@@ -124,6 +125,13 @@ func (a *App) onReady() {
 		HideWindowButtons: true,
 		Content:           ui.View(a.view),
 	})
+
+	// Set the native window icon explicitly so development runs (go run/go tool
+	// mygo dev) show Aurora's logo in the Windows taskbar as well as packaged
+	// builds, which take their executable icon from mygo.json.
+	if err := a.win.SetIcon(resources.IconPNG); err != nil {
+		log.Printf("set Aurora window icon: %v", err)
+	}
 
 	var err error
 	a.videoHWND, err = a.platform.CreateVideoHost(a.win.NativeHandle())

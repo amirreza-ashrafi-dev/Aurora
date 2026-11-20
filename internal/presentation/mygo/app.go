@@ -41,6 +41,8 @@ type App struct {
 	videoHWND     uintptr
 	player        application.Player
 	playerFactory application.PlayerFactory
+	// Serializes background MPV thumbnail commands against player teardown.
+	playerCommandMu sync.RWMutex
 	subtitle application.SubtitlePlayer
 	subtitlePreferences application.SubtitlePreferencesRepository
 	subtitleAssignments application.SubtitleAssignmentRepository
@@ -276,6 +278,20 @@ func (a *App) ensurePlayer() error {
 	}
 	a.startPolling()
 	return nil
+}
+
+// closePlayer waits for any in-flight background MPV command before destroying
+// the context or unloading its DLL. Callers must stop the polling goroutine first.
+func (a *App) closePlayer() {
+	a.playerCommandMu.Lock()
+	defer a.playerCommandMu.Unlock()
+
+	player := a.player
+	a.player = nil
+	a.subtitle = nil
+	if player != nil {
+		player.Close()
+	}
 }
 
 func formatTime(seconds float64) string {

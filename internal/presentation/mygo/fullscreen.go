@@ -30,7 +30,10 @@ func (a *App) showFullscreenHeader() {
 	}
 	anchor := mygo.Rectangle{X: bounds.Width / 2, Y: 0, Width: 1, Height: 1}
 	if a.fullscreenHeader != nil && !a.fullscreenHeader.IsDestroyed() {
-		a.fullscreenHeader.SetAnchor(anchor)
+		if anchor != a.fullscreenHeaderAnchor {
+			a.fullscreenHeader.SetAnchor(anchor)
+			a.fullscreenHeaderAnchor = anchor
+		}
 		if !a.fullscreenHeader.IsVisible() {
 			a.fullscreenHeader.ShowInactive()
 		}
@@ -41,6 +44,7 @@ func (a *App) showFullscreenHeader() {
 		Gap: 8, Width: width, Height: 58, Focusable: false,
 		Hidden: true, Content: ui.View(a.fullscreenHeaderView),
 	})
+	a.fullscreenHeaderAnchor = anchor
 	a.fullscreenHeader.ShowInactive()
 }
 

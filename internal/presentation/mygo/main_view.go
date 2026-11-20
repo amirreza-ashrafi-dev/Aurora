@@ -20,7 +20,7 @@ func (a *App) view(c *ui.Context) {
 		a.normalView(c)
 	}
 
-	// Handle.Bounds is committed after layout; one follow-up frame exposes the
+	// Handle.Bounds is committed after layout; a follow-up frame exposes the
 	// new rectangle to the Win32 child-window adapter.
 	if !a.videoLayoutFramePending {
 		a.videoLayoutFramePending = true
@@ -32,158 +32,222 @@ func (a *App) normalView(c *ui.Context) {
 	ui.Column(c).Fill().Background(ui.Hex(auroraBackground)).Children(func() {
 		a.windowTitleBar(c)
 		a.resumePrompt(c)
-		ui.Column(c).Fill().Padding(auroraMainPadding).Gap(10).Background(ui.Hex(auroraBackground)).Children(func() {
+		ui.Column(c).Fill().Padding(16).Gap(12).Background(ui.Hex(auroraBackground)).Children(func() {
+			// The reference uses a 912 / 320 split at 1280 px, with a 16 px gap.
+			// Grow keeps the video stage responsive while the queue stays fixed.
 			ui.Row(c).
-				Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(auroraStageMinHeight).
-				AlignItems(ui.Stretch).Gap(auroraStageGap).Children(func() {
-				videoStage := ui.Box(c).Grow(1).FillHeight().MinHeight(auroraStageMinHeight).MinWidth(0)
-				if strings.TrimSpace(a.path) == "" {
-					videoStage = videoStage.Center().Padding(30).Gap(11).Radius(14).
-						Background(ui.Hex("#111722")).Border(1, ui.Hex(auroraBorder)).Children(func() {
-						ui.Box(c).Size(72, 72).Radius(22).Background(ui.Hex(auroraAccentSoft)).Border(1, ui.Hex("#59477D")).Center().Children(func() {
-							ui.Text(c, "▶").FontSize(29).Bold().TextColor(ui.Hex("#DCCEFF"))
-						})
-						ui.Text(c, "YOUR CINEMA, READY").FontSize(9).Bold().LetterSpacing(2).TextColor(ui.Hex(auroraAccent))
-						ui.Text(c, "Nothing playing yet").FontSize(22).Bold().TextColor(ui.Hex(auroraText))
-						ui.Text(c, "Choose a video from your queue to begin watching.").FontSize(11).TextColor(ui.Hex(auroraMuted))
-					})
-				}
-				videoStage.Bind(&a.videoStageHandle)
+				Basis(0).Grow(1).Shrink(1).FillWidth().
+				MinHeight(auroraStageMinHeight).
+				AlignItems(ui.Stretch).
+				Gap(auroraStageGap).
+				Children(func() {
+					videoStage := ui.Box(c).
+						Grow(1).FillHeight().MinWidth(0).MinHeight(auroraStageMinHeight).
+						Radius(16).Background(ui.Hex("#000000")).
+						Border(1, ui.Hex(auroraBorderSoft))
+					if strings.TrimSpace(a.path) == "" {
+						videoStage = videoStage.Center().Padding(28).Gap(12).
+							Background(ui.Hex(auroraPanel)).
+							Children(func() {
+								// The final artwork is supplied by the user. Until the
+								// binary asset can be committed, keep the empty-state
+								// composition restrained rather than inventing a mark.
+								ui.Text(c, "YOUR CINEMA, READY").
+									FontSize(9).Bold().LetterSpacing(2.2).
+									TextColor(ui.Hex(auroraAccent))
+								ui.Text(c, "Nothing playing yet").
+									FontSize(26).Bold().
+									TextColor(ui.Hex(auroraText))
+								ui.Text(c, "Choose a video from your queue to begin watching.").
+									FontSize(12).TextColor(ui.Hex(auroraMuted))
+							})
+					}
+					videoStage.Bind(&a.videoStageHandle)
 
-				ui.Column(c).Width(auroraQueueWidth).Shrink(0).FillHeight().MinHeight(0).
-					Padding(14).Gap(11).Background(ui.Hex(auroraPanel)).Border(1, ui.Hex(auroraBorder)).
-					Radius(14).Clip().Children(func() {
-					ui.Row(c).Shrink(0).Gap(8).Children(func() {
-						ui.Column(c).Gap(1).Children(func() {
-							ui.Text(c, "PLAY QUEUE").FontSize(11).Bold().LetterSpacing(1).TextColor(ui.Hex(auroraText))
-							ui.Text(c, "UP NEXT").FontSize(8).LetterSpacing(1).TextColor(ui.Hex(auroraMuted))
+					ui.Column(c).
+						Width(auroraQueueWidth).Shrink(0).FillHeight().MinHeight(0).
+						Padding(16).Gap(12).
+						Background(ui.Hex(auroraPanel)).
+						Border(1, ui.Hex(auroraBorderSoft)).
+						Radius(16).Clip().
+						Children(func() {
+							ui.Row(c).Shrink(0).Gap(8).Children(func() {
+								ui.Column(c).Gap(2).Children(func() {
+									ui.Text(c, "PLAY QUEUE").
+										FontSize(11).Bold().LetterSpacing(1.2).
+										TextColor(ui.Hex(auroraText))
+									ui.Text(c, "UP NEXT").
+										FontSize(8).LetterSpacing(1.5).
+										TextColor(ui.Hex(auroraMuted))
+								})
+								ui.Spacer(c)
+								ui.Text(c, fmt.Sprintf("%02d", len(a.playlist))).
+									FontSize(10).Bold().Padding(6, 9).
+									Radius(8).Background(ui.Hex(auroraAccentSoft)).
+									TextColor(ui.Hex(auroraAccent))
+							})
+
+							if len(a.playlist) == 0 {
+								ui.Column(c).
+									Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(0).
+									Padding(14).Gap(7).
+									Background(ui.Hex("#181611")).
+									Border(1, ui.Hex(auroraBorderSoft)).
+									Radius(11).Children(func() {
+										ui.Text(c, "Your queue is empty").
+											FontSize(13).Bold().TextColor(ui.Hex(auroraText))
+										ui.Text(c, "Add a few videos to start watching.").
+											FontSize(10).TextColor(ui.Hex(auroraMuted))
+									})
+							} else {
+								ui.List(c, nil, len(a.playlist), func(i int) {
+									index := i
+									label := filepath.Base(a.playlist[i])
+									ui.Row(c).FillWidth().Height(48).Gap(6).Children(func() {
+										item := ui.Button(c, label).
+											Grow(1).Height(48).Padding(9, 11).
+											Radius(9).NoWrap().Ellipsis("…")
+										if i == a.playlistPos {
+											item = item.Selected(true).
+												Background(ui.Hex(auroraAccentSoft)).
+												Border(1, ui.Hex("#80672D")).
+												TextColor(ui.Hex("#F4E6BD"))
+										} else {
+											item = item.Background(ui.Hex("#181611")).
+												Border(1, ui.Hex(auroraBorderSoft)).
+												TextColor(ui.Hex("#D2CCBE"))
+										}
+										if item.Clicked() {
+											a.playPlaylistIndex(index)
+										}
+										ui.Button(c, "×").
+											Width(32).Height(48).Padding(0).Radius(9).
+											Background(ui.Hex("#1B1812")).
+											Border(1, ui.Hex(auroraBorderSoft)).
+											TextColor(ui.Hex(auroraMuted)).
+											Tooltip("Remove from queue").
+											OnClick(func() { a.removePlaylistIndex(index) })
+									})
+								}).Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(0).Gap(8)
+							}
+
+							ui.Column(c).Shrink(0).Gap(8).Children(func() {
+								if auroraAddVideosButton(c).Clicked() {
+									a.chooseFiles()
+								}
+								ui.Text(c, "SPACE  Play / Pause").
+									FontSize(8).TextColor(ui.Hex(auroraMuted))
+								ui.Text(c, "← →  Seek     ↑ ↓  Volume").
+									FontSize(8).TextColor(ui.Hex(auroraMuted))
+							})
+						})
+				})
+
+			// Playback deck: title/status row, timeline and transport/actions.
+			ui.Column(c).Shrink(0).Gap(9).Padding(16, 20).
+				Background(ui.Hex(auroraFooter)).
+				Border(1, ui.Hex(auroraBorderSoft)).
+				Radius(14).Children(func() {
+					ui.Row(c).Shrink(0).Gap(10).Children(func() {
+						ui.Column(c).Gap(3).Children(func() {
+							title := a.currentTitle()
+							if title == "" { title = "Nothing playing" }
+							ui.Text(c, title).FontSize(15).Bold().
+								TextColor(ui.Hex(auroraText)).Ellipsis("…")
+							ui.Text(c, a.status).FontSize(9).
+								TextColor(ui.Hex(auroraMuted)).Ellipsis("…")
 						})
 						ui.Spacer(c)
-						ui.Text(c, fmt.Sprintf("%02d", len(a.playlist))).FontSize(11).Bold().Padding(5, 8).
-							Radius(8).Background(ui.Hex(auroraAccentSoft)).TextColor(ui.Hex("#DCCEFF"))
-					})
-
-					if len(a.playlist) == 0 {
-						ui.Column(c).Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(0).Padding(14).Gap(7).
-							Background(ui.Hex("#1A202B")).Border(1, ui.Hex(auroraBorder)).Radius(11).Children(func() {
-							ui.Text(c, "Your queue is empty").FontSize(13).Bold().TextColor(ui.Hex(auroraText))
-							ui.Text(c, "Add a few videos to start watching.").FontSize(10).TextColor(ui.Hex(auroraMuted))
-						})
-					} else {
-						ui.List(c, nil, len(a.playlist), func(i int) {
-							index := i
-							label := filepath.Base(a.playlist[i])
-							ui.Row(c).FillWidth().Height(38).Gap(5).Children(func() {
-								item := ui.Button(c, label).Grow(1).Height(38).Padding(8, 10).Radius(9).NoWrap().Ellipsis("…")
-								if i == a.playlistPos {
-									item = item.Selected(true).Background(ui.Hex(auroraAccentSoft)).Border(1, ui.Hex("#65518C")).TextColor(ui.Hex("#F5F0FF"))
-								} else {
-									item = item.Background(ui.Hex("#1B202B")).Border(1, ui.Hex("#252C39")).TextColor(ui.Hex("#D0D4DF"))
-								}
-								if item.Clicked() {
-									a.playPlaylistIndex(index)
-								}
-
-								// OnClick runs after MyGo has finished building the
-								// current list pass. Removing here avoids changing the
-								// slice while ui.List is still visiting its old rows.
-								ui.Button(c, "×").Width(34).Height(38).Padding(0).Radius(9).
-									Background(ui.Hex("#202633")).Border(1, ui.Hex("#30394A")).TextColor(ui.Hex("#ADB5C4")).
-									Tooltip("Remove from queue").
-									OnClick(func() { a.removePlaylistIndex(index) })
-							})
-						}).Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(0).Gap(8)
-					}
-
-					ui.Column(c).Shrink(0).Gap(6).Children(func() {
-						if auroraAddVideosButton(c).Clicked() {
-							a.chooseFiles()
+						if strings.TrimSpace(a.path) != "" {
+							ui.Text(c, "NOW PLAYING").
+								FontSize(8).Bold().LetterSpacing(1.2).
+								Padding(7, 10).Radius(7).
+								Background(ui.Hex(auroraAccentSoft)).
+								TextColor(ui.Hex(auroraAccent))
+						} else {
+							ui.Text(c, "AURORA  /  CINEMA PLAYER").
+								FontSize(8).LetterSpacing(1).
+								TextColor(ui.Hex(auroraMuted))
 						}
-						ui.Text(c, "SPACE  Play / Pause").FontSize(8).TextColor(ui.Hex(auroraMuted))
-						ui.Text(c, "← →  Seek     ↑ ↓  Volume").FontSize(8).TextColor(ui.Hex(auroraMuted))
 					})
+
+					maxDuration := a.state.Duration
+					if maxDuration <= 0 { maxDuration = 1 }
+					ui.Row(c).Shrink(0).Gap(10).Children(func() {
+						ui.Text(c, formatTime(a.state.Position)).
+							Width(48).FontSize(9).TextColor(ui.Hex(auroraMuted))
+						timeline := ui.Slider(c, &a.state.Position, 0, maxDuration).
+							Fill().Height(20)
+						a.updateTimeline(timeline.Dragging(), timeline.Changed())
+						ui.Text(c, formatTime(a.state.Duration)).
+							Width(48).FontSize(9).TextColor(ui.Hex(auroraMuted))
+					})
+
+					ui.Row(c).Shrink(0).Gap(9).Children(func() {
+						if auroraQuietButton(c, "⏮").Tooltip("Previous").Clicked() {
+							a.previous()
+						}
+						playLabel := "Ⅱ  Pause"
+						if a.state.Paused || strings.TrimSpace(a.path) == "" {
+							playLabel = "▶  Play"
+						}
+						if auroraPrimaryButton(c, playLabel).Clicked() {
+							a.togglePlayPause()
+						}
+						if auroraQuietButton(c, "⏭").Tooltip("Next").Clicked() {
+							a.next()
+						}
+						if auroraQuietButton(c, "■").Tooltip("Stop").Clicked() && a.player != nil {
+							if err := a.player.Stop(); err != nil {
+								a.status = err.Error()
+							} else {
+								a.state.Position = 0
+								a.state.Paused = true
+								a.clearCurrentProgress()
+								a.status = "Stopped"
+							}
+						}
+						ui.Spacer(c)
+						ui.Text(c, "VOLUME").FontSize(8).LetterSpacing(1).
+							TextColor(ui.Hex(auroraMuted))
+						volumeSlider := ui.Slider(c, &a.state.Volume, 0, 100).
+							Width(125).Height(21)
+						if volumeSlider.Changed() && a.player != nil {
+							if err := a.player.SetVolume(a.state.Volume); err != nil {
+								a.status = err.Error()
+							}
+						}
+						ui.Text(c, fmt.Sprintf("%.0f%%", a.state.Volume)).
+							Width(36).FontSize(9).TextColor(ui.Hex(auroraText))
+						a.subtitleStudioFlyoutButton(c)
+						if auroraQuietButton(c, "◫").Tooltip("Cinematic mode (C)").Clicked() {
+							a.toggleCinematicMode()
+						}
+						if auroraQuietButton(c, "⛶").Tooltip("Fullscreen").Clicked() {
+							a.toggleFullscreen()
+						}
+					})
+					ui.Text(c, "C  CINEMATIC     F / F11  FULLSCREEN     ESC  EXIT MODE").
+						Shrink(0).FontSize(8).LetterSpacing(0.5).
+						TextColor(ui.Hex("#716A5B"))
 				})
-			})
-
-			ui.Row(c).Shrink(0).Gap(10).Children(func() {
-				ui.Column(c).Gap(2).Children(func() {
-					ui.Text(c, a.currentTitle()).FontSize(16).Bold().TextColor(ui.Hex(auroraText))
-					ui.Text(c, a.status).FontSize(10).TextColor(ui.Hex(auroraMuted)).Ellipsis("…")
-				})
-				ui.Spacer(c)
-				ui.Text(c, "NOW PLAYING").FontSize(8).LetterSpacing(1.2).Padding(7, 10).Radius(8).
-					Background(ui.Hex(auroraAccentSoft)).TextColor(ui.Hex("#DCCEFF"))
-			})
-
-			maxDuration := a.state.Duration
-			if maxDuration <= 0 {
-				maxDuration = 1
-			}
-			ui.Row(c).Shrink(0).Gap(10).Children(func() {
-				ui.Text(c, formatTime(a.state.Position)).Width(48).FontSize(10).TextColor(ui.Hex(auroraMuted))
-				timeline := ui.Slider(c, &a.state.Position, 0, maxDuration).Fill().Height(24)
-				a.updateTimeline(timeline.Dragging(), timeline.Changed())
-				ui.Text(c, formatTime(a.state.Duration)).Width(48).FontSize(10).TextColor(ui.Hex(auroraMuted))
-			})
-
-			ui.Row(c).Shrink(0).Gap(9).Padding(10, 13).Background(ui.Hex(auroraPanel)).
-				Border(1, ui.Hex(auroraBorder)).Radius(13).Children(func() {
-				if auroraQuietButton(c, "⏮").Tooltip("Previous").Clicked() {
-					a.previous()
-				}
-				playLabel := "Ⅱ  Pause"
-				if a.state.Paused {
-					playLabel = "▶  Play"
-				}
-				if auroraPrimaryButton(c, playLabel).Clicked() {
-					a.togglePlayPause()
-				}
-				if auroraQuietButton(c, "⏭").Tooltip("Next").Clicked() {
-					a.next()
-				}
-				if auroraQuietButton(c, "■").Tooltip("Stop").Clicked() && a.player != nil {
-					if err := a.player.Stop(); err != nil {
-						a.status = err.Error()
-					} else {
-						a.state.Position = 0
-						a.state.Paused = true
-						a.clearCurrentProgress()
-						a.status = "Stopped"
-					}
-				}
-				ui.Spacer(c)
-				ui.Text(c, "VOLUME").FontSize(8).LetterSpacing(1).TextColor(ui.Hex(auroraMuted))
-				volumeSlider := ui.Slider(c, &a.state.Volume, 0, 100).Width(145).Height(23)
-				if volumeSlider.Changed() && a.player != nil {
-					if err := a.player.SetVolume(a.state.Volume); err != nil {
-						a.status = err.Error()
-					}
-				}
-				ui.Text(c, fmt.Sprintf("%.0f%%", a.state.Volume)).Width(38).FontSize(10).TextColor(ui.Hex(auroraText))
-				a.subtitleStudioFlyoutButton(c)
-				if auroraQuietButton(c, "◫").Tooltip("Cinematic mode (C)").Clicked() {
-					a.toggleCinematicMode()
-				}
-				if auroraQuietButton(c, "⛶").Tooltip("Fullscreen").Clicked() {
-					a.toggleFullscreen()
-				}
-			})
-			ui.Text(c, "C  Cinematic     F / F11  Fullscreen     ESC  Exit mode     Double-click video  Fullscreen").Shrink(0).FontSize(8).TextColor(ui.Hex("#778194"))
 		})
 	})
-
 }
 
 func (a *App) cinematicView(c *ui.Context) {
-	ui.Column(c).Fill().Background(ui.Hex("#05070B")).Children(func() {
+	ui.Column(c).Fill().Background(ui.Hex("#050403")).Children(func() {
 		videoStage := ui.Box(c).Grow(1).FillWidth().FillHeight().MinWidth(0).MinHeight(0)
 		if strings.TrimSpace(a.path) == "" {
 			videoStage = videoStage.Center().Padding(24).Gap(10).
-				Background(ui.Hex("#090D14")).Children(func() {
-				ui.Text(c, "AURORA CINEMATIC MODE").FontSize(9).Bold().LetterSpacing(2).TextColor(ui.Hex(auroraAccent))
-				ui.Text(c, "Your screen is ready").FontSize(22).Bold().TextColor(ui.Hex(auroraText))
-				ui.Text(c, "Add a video to begin watching.").FontSize(11).TextColor(ui.Hex(auroraMuted))
-			})
+				Background(ui.Hex(auroraBackground)).Children(func() {
+					ui.Text(c, "YOUR CINEMA, READY").
+						FontSize(9).Bold().LetterSpacing(2).TextColor(ui.Hex(auroraAccent))
+					ui.Text(c, "Nothing playing yet").
+						FontSize(22).Bold().TextColor(ui.Hex(auroraText))
+					ui.Text(c, "Add a video to begin watching.").
+						FontSize(11).TextColor(ui.Hex(auroraMuted))
+				})
 		}
 		videoStage.Bind(&a.videoStageHandle)
 	})

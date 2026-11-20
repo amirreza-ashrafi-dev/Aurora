@@ -57,17 +57,21 @@ When you open a video with saved progress, Aurora offers **Resume** or **Start o
 
 ## Building from Source
 
-1. Clone or download the project.
-2. Make sure the required Go dependencies are installed.
-3. Check that the MPV runtime files are available in `third_party/mpv`.
-4. Open a terminal in the project directory.
-5. Run:
+1. Clone the project.
+2. Install Git LFS and run `git lfs pull` to download the MPV runtime DLLs tracked outside normal Git storage.
+3. Install the Go version declared in `go.mod` and download Go dependencies with `go mod download`.
+4. Run the test suite with `go test ./...`.
+5. Build the Windows application:
 
 ```powershell
 go tool mygo build -platform windows/amd64
 ```
 
-The build output is configured in `mygo.json`.
+The build output and packaged resources are configured in `mygo.json`. The MPV DLLs must be real LFS-downloaded files in `third_party/mpv`; the small LFS pointer text files are not usable runtime libraries.
+
+## Developer Documentation
+
+New contributors can start with the [Developer Guide](docs/DEVELOPER_GUIDE.md), then use the [Source Reference](docs/SOURCE_REFERENCE.md) for a file-by-file and method-by-method explanation. The shorter [Architecture](ARCHITECTURE.md) and [Design System](DESIGN_SYSTEM.md) documents remain available for layer boundaries and visual rules.
 
 ## Project Status
 

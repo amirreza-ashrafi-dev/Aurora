@@ -1,5 +1,8 @@
 # Architecture
 
+For the complete newcomer walkthrough and the file-by-file reference, see the [Developer Guide](docs/DEVELOPER_GUIDE.md) and [Source Reference](docs/SOURCE_REFERENCE.md).
+
+
 ## Dependency direction
 
 ```text

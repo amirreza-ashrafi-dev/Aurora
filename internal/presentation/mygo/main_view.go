@@ -49,9 +49,9 @@ func (a *App) normalView(c *ui.Context) {
 						videoStage = videoStage.Center().Padding(28).Gap(12).
 							Background(ui.Hex(auroraPanel)).
 							Children(func() {
-								// The final artwork is supplied by the user. Until the
-								// binary asset can be committed, keep the empty-state
-								// composition restrained rather than inventing a mark.
+								if logo := auroraLogo(); logo != nil {
+									ui.Image(c, logo).Width(112).Height(112).Fit(ui.Contain)
+								}
 								ui.Text(c, "YOUR CINEMA, READY").
 									FontSize(9).Bold().LetterSpacing(2.2).
 									TextColor(ui.Hex(auroraAccent))
@@ -316,6 +316,9 @@ func (a *App) cinematicView(c *ui.Context) {
 		if strings.TrimSpace(a.path) == "" {
 			videoStage = videoStage.Center().Padding(24).Gap(10).
 				Background(ui.Hex(auroraBackground)).Children(func() {
+					if logo := auroraLogo(); logo != nil {
+						ui.Image(c, logo).Width(104).Height(104).Fit(ui.Contain)
+					}
 					ui.Text(c, "YOUR CINEMA, READY").
 						FontSize(9).Bold().LetterSpacing(2).TextColor(ui.Hex(auroraAccent))
 					ui.Text(c, "Nothing playing yet").

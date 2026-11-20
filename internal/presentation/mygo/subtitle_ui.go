@@ -101,7 +101,7 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 		ui.Row(c).FillWidth().Shrink(0).Gap(6).Padding(0, 0, 10, 0).
 			Children(func() {
 				ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
-					ui.Box(c).Size(7).Radius(4).Background(ui.Hex(auroraAccent))
+					ui.Box(c).Size(7, 7).Radius(4).Background(ui.Hex(auroraAccent))
 					ui.Text(c, "SUBTITLE STUDIO").FontSize(11).Bold().
 						LetterSpacing(1.1).TextColor(ui.Hex(auroraText))
 				})
@@ -279,7 +279,7 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 
 func subtitleSectionHeading(c *ui.Context, label string) {
 	ui.Row(c).FillWidth().Shrink(0).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Size(5).Radius(3).Background(ui.Hex(auroraAccent))
+		ui.Box(c).Size(5, 5).Radius(3).Background(ui.Hex(auroraAccent))
 		ui.Text(c, label).FontSize(8).Bold().LetterSpacing(0.9).
 			TextColor(ui.Hex(auroraMuted))
 		ui.Box(c).Grow(1).Height(1).Background(ui.Hex(auroraBorderSoft))

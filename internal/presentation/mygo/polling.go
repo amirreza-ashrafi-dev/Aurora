@@ -55,6 +55,11 @@ func (a *App) startPolling() {
 					if durErr == nil && duration > 0 {
 						a.state.Duration = duration
 					}
+					// Capture one representative frame after the decoder has
+					// had time to produce a stable image for this queue item.
+					if position >= 1.5 && !a.state.Paused {
+						a.captureQueueThumbnail(a.path)
+					}
 					now := time.Now()
 					if !a.state.Paused && !a.scrubbing && now.Sub(lastProgressSample) >= 5*time.Second {
 						lastProgressSample = now

@@ -15,6 +15,7 @@ func New() (*Platform, error) {
 }
 func (*Platform) CreateVideoHost(uintptr) (uintptr, error)      { return 0, errors.New("Windows only") }
 func (*Platform) InstallVideoDoubleClick(uintptr, func()) error { return errors.New("Windows only") }
+func (*Platform) InstallVideoMouseWheel(uintptr, func(int32)) error { return errors.New("Windows only") }
 func (*Platform) InstallVideoFileDrop(uintptr, func([]string)) error { return errors.New("Windows only") }
 func (*Platform) LayoutVideo(uintptr, uintptr, bool, domain.Rect) error {
 	return errors.New("Windows only")

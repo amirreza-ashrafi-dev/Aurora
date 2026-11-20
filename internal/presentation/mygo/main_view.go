@@ -153,7 +153,7 @@ func (a *App) normalView(c *ui.Context) {
 																ui.Text(c, title).FillWidth().MinWidth(0).NoWrap().
 																	FontSize(10).Bold().
 																	TextColor(ui.Hex(titleColor)).
-																	Ellipsis("…")
+																	Ellipsis("…").Tooltip(title)
 																meta := strings.ToUpper(strings.TrimPrefix(filepath.Ext(mediaPath), "."))
 																if meta == "" { meta = "VIDEO" }
 																if active && a.state.Duration > 0 {
@@ -229,12 +229,15 @@ func (a *App) normalView(c *ui.Context) {
 				Border(1, ui.Hex(auroraBorderSoft)).
 				Radius(14).Children(func() {
 					ui.Row(c).Shrink(0).Gap(10).Children(func() {
-						ui.Column(c).Gap(3).Children(func() {
+						ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(3).Children(func() {
 							title := a.currentTitle()
 							if title == "" { title = "Nothing playing" }
-							ui.Text(c, title).FontSize(15).Bold().
-								TextColor(ui.Hex(auroraText)).Ellipsis("…")
-							ui.Text(c, a.status).FontSize(9).
+							ui.Text(c, title).FillWidth().MinWidth(0).NoWrap().
+								FontSize(15).Bold().
+								TextColor(ui.Hex(auroraText)).
+								Ellipsis("…").Tooltip(title)
+							ui.Text(c, a.status).FillWidth().MinWidth(0).NoWrap().
+								FontSize(9).
 								TextColor(ui.Hex(auroraMuted)).Ellipsis("…")
 						})
 						ui.Spacer(c)

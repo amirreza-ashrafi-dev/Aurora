@@ -187,6 +187,7 @@ func (a *App) clearProgress(path string) {
 func (a *App) clearCurrentProgress() {
 	if a.path != "" { a.clearProgress(a.path) }
 	a.pendingResume = nil
+	a.closeResumeBanner()
 }
 
 func (a *App) cancelPendingProgressSave() {

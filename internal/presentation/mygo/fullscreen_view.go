@@ -11,12 +11,20 @@ func (a *App) fullscreenControls(c *ui.Context) {
 	applyAuroraTheme(c)
 	c.Root().Background(ui.Transparent)
 	ui.Column(c).Fill().Padding(9).Children(func() {
-		a.resumePrompt(c)
-		ui.Column(c).Fill().Padding(13).Gap(9).Background(ui.Hex(auroraPanel)).Border(1, ui.Hex(auroraBorder)).Radius(15).Children(func() {
-			ui.Row(c).Height(30).Gap(10).Children(func() {
-				ui.Column(c).Gap(1).Children(func() {
-					ui.Text(c, a.currentTitle()).FontSize(14).Bold().TextColor(ui.Hex(auroraText))
-					ui.Text(c, "AURORA  /  NOW PLAYING").FontSize(8).LetterSpacing(1).TextColor(ui.Hex(auroraMuted))
+		ui.Column(c).Fill().Padding(15, 18).Gap(11).
+			Background(ui.Hex("#080807")).
+			Border(1, ui.Hex("#665323")).
+			Radius(16).
+			Children(func() {
+			ui.Row(c).FillWidth().MinWidth(0).Height(34).Gap(10).Children(func() {
+				title := a.currentTitle()
+				ui.Column(c).Grow(1).Shrink(1).MinWidth(0).Gap(1).Children(func() {
+					ui.Text(c, title).FillWidth().MinWidth(0).SingleLine().
+						FontSize(14).Bold().
+						TextColor(ui.Hex(auroraText)).
+						Tooltip(title)
+					ui.Text(c, "AURORA  /  NOW PLAYING").FontSize(8).
+						LetterSpacing(1.4).TextColor(ui.Hex(auroraAccent))
 				})
 				ui.Spacer(c)
 				cinemaLabel := "Cinematic"
@@ -38,14 +46,14 @@ func (a *App) fullscreenControls(c *ui.Context) {
 			if maxDuration <= 0 {
 				maxDuration = 1
 			}
-			ui.Row(c).Gap(10).Children(func() {
+			ui.Row(c).Gap(12).Children(func() {
 				ui.Text(c, formatTime(a.state.Position)).Width(48).FontSize(10).TextColor(ui.Hex(auroraMuted))
-				timeline := ui.Slider(c, &a.state.Position, 0, maxDuration).Fill().Height(22)
+				timeline := ui.Slider(c, &a.state.Position, 0, maxDuration).Fill().Height(24)
 				a.updateTimeline(timeline.Dragging(), timeline.Changed())
 				ui.Text(c, formatTime(a.state.Duration)).Width(48).FontSize(10).TextColor(ui.Hex(auroraMuted))
 			})
 
-			ui.Row(c).Gap(8).Children(func() {
+			ui.Row(c).Gap(9).Children(func() {
 				if auroraQuietButton(c, "⏮ Previous").Clicked() {
 					a.previous()
 				}
@@ -71,7 +79,7 @@ func (a *App) fullscreenControls(c *ui.Context) {
 				}
 				ui.Spacer(c)
 				ui.Text(c, "VOLUME").FontSize(8).LetterSpacing(1).TextColor(ui.Hex(auroraMuted))
-				volumeSlider := ui.Slider(c, &a.state.Volume, 0, 100).Width(105).Height(22)
+				volumeSlider := ui.Slider(c, &a.state.Volume, 0, 100).Width(125).Height(22)
 				if volumeSlider.Changed() && a.player != nil {
 					if err := a.player.SetVolume(a.state.Volume); err != nil {
 						a.status = err.Error()

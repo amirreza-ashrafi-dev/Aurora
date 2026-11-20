@@ -6,6 +6,12 @@ func (a *App) Close() {
 	a.closeOnce.Do(func() {
 		a.closeSubtitleFlyout()
 		a.closeFullscreenSubtitleFlyout()
+		a.closeResumeBanner()
+		a.closeVolumeOSD()
+		if a.fullscreenHeader != nil && !a.fullscreenHeader.IsDestroyed() {
+			a.fullscreenHeader.Destroy()
+			a.fullscreenHeader = nil
+		}
 		a.stopControllerMonitor()
 		a.stopPolling()
 		a.saveCurrentProgressImmediately()

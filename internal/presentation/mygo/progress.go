@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	mygo "github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"my-go/internal/application"
@@ -186,6 +187,7 @@ func (a *App) clearProgress(path string) {
 func (a *App) clearCurrentProgress() {
 	if a.path != "" { a.clearProgress(a.path) }
 	a.pendingResume = nil
+	a.closeResumeBanner()
 }
 
 func (a *App) cancelPendingProgressSave() {
@@ -212,6 +214,7 @@ func (a *App) offerResumeForCurrent() {
 	if a.win != nil && !a.win.IsDestroyed() { a.win.Invalidate() }
 	if a.fullscreen || a.cinematicMode {
 		a.showController()
+		a.showResumeBanner()
 		if a.controller != nil && !a.controller.IsDestroyed() {
 			a.controller.Invalidate()
 		}
@@ -224,6 +227,7 @@ func (a *App) chooseResume() {
 	if err := a.player.Seek(record.Position); err != nil { a.status = "Resume failed: " + err.Error(); return }
 	if err := a.player.SetPaused(false); err != nil { a.status = "Resume failed: " + err.Error(); return }
 	a.pendingResume = nil
+	a.closeResumeBanner()
 	a.state.Position, a.state.Duration, a.state.Paused = record.Position, record.Duration, false
 	a.status = "Resuming from " + formatTime(record.Position)
 }
@@ -232,6 +236,7 @@ func (a *App) chooseStartOver() {
 	if a.pendingResume == nil || a.player == nil { return }
 	path := a.pendingResume.MediaPath
 	a.pendingResume = nil
+	a.closeResumeBanner()
 	a.clearProgress(path)
 	if err := a.player.Seek(0); err != nil { a.status = "Could not restart video: " + err.Error(); return }
 	if err := a.player.SetPaused(false); err != nil { a.status = "Could not restart video: " + err.Error(); return }
@@ -248,15 +253,119 @@ func (a *App) updateTimeline(dragging, changed bool) {
 	if !dragging && (wasScrubbing || changed) { a.scheduleCurrentProgressSave() }
 }
 
+// resumePrompt keeps the ordinary-window Smart Resume choice inside the
+// main layout. Fullscreen and Cinematic Mode use the separate floating banner.
 func (a *App) resumePrompt(c *ui.Context) {
-	if a.pendingResume == nil { return }
+	if a == nil || a.pendingResume == nil {
+		return
+	}
+	if a.fullscreen || a.cinematicMode || (a.win != nil && !a.win.IsDestroyed() && a.win.IsFullScreen()) {
+		return
+	}
+
 	record := *a.pendingResume
-	ui.Row(c).FillWidth().Gap(10).Padding(10, 12).Background(ui.Hex("#25213A")).Border(1, ui.Hex("#65518C")).Radius(10).Children(func() {
-		ui.Column(c).Grow(1).Gap(2).Children(func() {
-			ui.Text(c, "CONTINUE WATCHING?").FontSize(9).Bold().TextColor(ui.Hex("#DCCEFF"))
-			ui.Text(c, filepath.Base(record.MediaPath)+"  ·  "+formatTime(record.Position)).FontSize(12).Bold().TextColor(ui.Hex(auroraText))
+	ui.Row(c).FillWidth().Gap(10).Padding(10, 12).
+		Background(ui.Hex("#1B1810")).
+		Border(1, ui.Hex("#80672D")).
+		Radius(10).
+		AlignItems(ui.Center).
+		Children(func() {
+			fullTitle := filepath.Base(record.MediaPath)
+			displayTitle := fullTitle+"  ·  "+formatTime(record.Position)
+			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).MaxWidthPercent(100).Gap(3).Children(func() {
+				ui.Text(c, "CONTINUE WATCHING?").
+					FontSize(9).Bold().LetterSpacing(1.1).
+					TextColor(ui.Hex(auroraAccent))
+				ui.Text(c, displayTitle).FillWidth().MinWidth(0).SingleLine().
+					FontSize(12).Bold().
+					TextColor(ui.Hex(auroraText)).
+					Tooltip(fullTitle)
+			})
+			if auroraQuietButton(c, "Start over").Clicked() {
+				a.chooseStartOver()
+			}
+			if auroraPrimaryButton(c, "▶  Resume").Clicked() {
+				a.chooseResume()
+			}
 		})
-		if auroraQuietButton(c, "Start over").Clicked() { a.chooseStartOver() }
-		if auroraPrimaryButton(c, "▶  Resume").Clicked() { a.chooseResume() }
+}
+
+func (a *App) showResumeBanner() {
+	if a == nil || a.pendingResume == nil || a.win == nil || a.win.IsDestroyed() {
+		return
+	}
+	if !a.win.IsFullScreen() && !a.cinematicMode {
+		return
+	}
+	bounds := a.win.ContentBounds()
+	if bounds.Width < 1 {
+		return
+	}
+	anchor := mygo.Rectangle{X: bounds.Width / 2, Y: 84, Width: 1, Height: 1}
+	if a.resumeBanner != nil && !a.resumeBanner.IsDestroyed() {
+		if anchor != a.resumeBannerAnchor {
+			a.resumeBanner.SetAnchor(anchor)
+			a.resumeBannerAnchor = anchor
+		}
+		if !a.resumeBanner.IsVisible() {
+			a.resumeBanner.ShowInactive()
+		}
+		return
+	}
+	a.resumeBanner = mygo.NewFlyout(mygo.FlyoutOptions{
+		Parent: a.win, Anchor: anchor, Placement: mygo.PlacementBottom,
+		Gap: 12, Width: 672, Height: 77, Focusable: false,
+		Hidden: true, Shadow: true, Content: ui.View(a.resumeBannerView),
 	})
+	a.resumeBannerAnchor = anchor
+	a.resumeBanner.ShowInactive()
+}
+
+func (a *App) closeResumeBanner() {
+	if a.resumeBanner != nil {
+		if !a.resumeBanner.IsDestroyed() {
+			a.resumeBanner.Close()
+		}
+		a.resumeBanner = nil
+		a.resumeBannerAnchor = mygo.Rectangle{}
+	}
+}
+
+func (a *App) resumeBannerView(c *ui.Context) {
+	applyAuroraTheme(c)
+	c.Root().Background(ui.Transparent)
+	if a.pendingResume == nil {
+		return
+	}
+	record := *a.pendingResume
+	ui.Row(c).Fill().Gap(13).Padding(14, 18).
+		Background(ui.Hex("#151718")).
+		Border(1, ui.Hex("#80672D")).Radius(14).
+		AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Size(42, 42).Radius(12).
+				Background(ui.Hex("#292315")).Center().
+				Children(func() {
+					ui.Text(c, "◷").FontSize(22).TextColor(ui.Hex(auroraAccent))
+				})
+			fullTitle := filepath.Base(record.MediaPath)
+			displayTitle := fullTitle+"  ·  "+formatTime(record.Position)
+			ui.Column(c).Grow(1).Shrink(1).MinWidth(0).MaxWidthPercent(100).Gap(5).Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, "CONTINUE WATCHING?").FontSize(9).Bold().
+						LetterSpacing(1.2).TextColor(ui.Hex(auroraAccent))
+					ui.Text(c, "SAVED POINT").FontSize(7).LetterSpacing(0.6).
+						Padding(4, 7).Radius(5).
+						Background(ui.Hex("#292315")).TextColor(ui.Hex("#D8BE79"))
+				})
+				ui.Text(c, displayTitle).FillWidth().MinWidth(0).SingleLine().
+					FontSize(12).Bold().TextColor(ui.Hex(auroraText)).
+					Tooltip(fullTitle)
+			})
+			if auroraQuietButton(c, "Start over").Clicked() {
+				a.chooseStartOver()
+			}
+			if auroraPrimaryButton(c, "▶  Resume").Clicked() {
+				a.chooseResume()
+			}
+		})
 }

@@ -11,10 +11,83 @@ import (
 )
 
 const (
-	controllerWidth  = 820
-	controllerHeight = 240
-	controllerBottom = 24
+	controllerWidth  = 896
+	controllerHeight = 194
+	controllerBottom = 32
 )
+
+func (a *App) showFullscreenHeader() {
+	if a == nil || a.win == nil || a.win.IsDestroyed() {
+		return
+	}
+	bounds := a.win.ContentBounds()
+	if bounds.Width < 1 {
+		return
+	}
+	width := min(bounds.Width, 1280)
+	if width < 320 {
+		width = bounds.Width
+	}
+	anchor := mygo.Rectangle{X: bounds.Width / 2, Y: 0, Width: 1, Height: 1}
+	if a.fullscreenHeader != nil && !a.fullscreenHeader.IsDestroyed() {
+		if anchor != a.fullscreenHeaderAnchor {
+			a.fullscreenHeader.SetAnchor(anchor)
+			a.fullscreenHeaderAnchor = anchor
+		}
+		if !a.fullscreenHeader.IsVisible() {
+			a.fullscreenHeader.ShowInactive()
+		}
+		return
+	}
+	a.fullscreenHeader = mygo.NewFlyout(mygo.FlyoutOptions{
+		Parent: a.win, Anchor: anchor, Placement: mygo.PlacementBottom,
+		Gap: 0, Width: width, Height: 72, Focusable: false,
+		Hidden: true, Content: ui.View(a.fullscreenHeaderView),
+	})
+	a.fullscreenHeaderAnchor = anchor
+	a.fullscreenHeader.ShowInactive()
+}
+
+func (a *App) hideFullscreenHeader() {
+	if a.fullscreenHeader != nil && !a.fullscreenHeader.IsDestroyed() {
+		a.fullscreenHeader.Hide()
+	}
+}
+
+func (a *App) hideResumeBanner() {
+	if a.resumeBanner != nil && !a.resumeBanner.IsDestroyed() {
+		a.resumeBanner.Hide()
+	}
+}
+
+func (a *App) fullscreenHeaderView(c *ui.Context) {
+	applyAuroraTheme(c)
+	c.Root().Background(ui.Transparent)
+	ui.Row(c).Fill().Padding(10, 16).Gap(10).
+		Background(ui.Hex("#101211")).
+		Border(1, ui.Hex(auroraBorderSoft)).Radius(12).
+		AlignItems(ui.Center).Children(func() {
+			if logo := auroraLogo(); logo != nil {
+				ui.Image(c, logo).Width(28).Height(28).Fit(ui.Contain)
+			}
+			ui.Column(c).Gap(1).Children(func() {
+				ui.Text(c, "AURORA CINEMA").FontSize(10).Bold().
+					LetterSpacing(1.6).TextColor(ui.Hex(auroraAccent))
+				ui.Text(c, "MASTER PLAYBACK SUITE").FontSize(7).
+					LetterSpacing(0.8).TextColor(ui.Hex(auroraMuted))
+			})
+			ui.Spacer(c)
+			if a.win != nil && a.win.IsFullScreen() {
+				if auroraQuietButton(c, "⛶  Exit fullscreen").Clicked() {
+					a.exitFullscreen()
+				}
+			} else if a.cinematicMode {
+				if auroraQuietButton(c, "Exit cinematic").Clicked() {
+					a.toggleCinematicMode()
+				}
+			}
+		})
+}
 
 func (a *App) controllerAnchorTarget() (mygo.Rectangle, bool) {
 	if a == nil || a.win == nil || a.win.IsDestroyed() {
@@ -109,19 +182,24 @@ func (a *App) showController() {
 		return
 	}
 	a.updateControllerBounds()
+	a.showFullscreenHeader()
+	if a.pendingResume != nil {
+		a.showResumeBanner()
+	} else {
+		a.hideResumeBanner()
+	}
 	if !a.controller.IsVisible() {
 		a.controller.ShowInactive()
 	}
 }
 
 func (a *App) hideController() {
-	if a.controller == nil || a.controller.IsDestroyed() {
-		return
-	}
 	a.closeFullscreenSubtitleFlyout()
-	if a.controller.IsVisible() {
+	if a.controller != nil && !a.controller.IsDestroyed() && a.controller.IsVisible() {
 		a.controller.Hide()
 	}
+	a.hideFullscreenHeader()
+	a.hideResumeBanner()
 }
 
 func (a *App) startControllerMonitor() {
@@ -138,6 +216,7 @@ func (a *App) startControllerMonitor() {
 		haveLastPoint := false
 		var lastActivity, lastMouseMovement time.Time
 		wasOverlayActive, visible := false, false
+		wasResumePending := false
 		const hideDelay = 3 * time.Second
 		for {
 			select {
@@ -148,15 +227,16 @@ func (a *App) startControllerMonitor() {
 					if a.win == nil || a.win.IsDestroyed() {
 						return
 					}
+					if !a.volumeOSDUntil.IsZero() && time.Now().After(a.volumeOSDUntil) { a.hideVolumeOSD() }
 
 					overlayActive := a.win.IsFullScreen() || a.cinematicMode
 					if !overlayActive {
-						if visible {
-							a.hideController()
-						}
+						a.hideController()
+						a.closeResumeBanner()
 						visible = false
 						a.setFullscreenCursorHidden(false)
 						wasOverlayActive = false
+						wasResumePending = false
 						haveLastPoint = false
 						lastMouseMovement = time.Time{}
 						return
@@ -172,29 +252,45 @@ func (a *App) startControllerMonitor() {
 					a.updateControllerBounds()
 					if !wasOverlayActive {
 						a.showController()
-						visible = true
+						visible = a.controller.IsVisible()
 						now := time.Now()
 						lastActivity, lastMouseMovement = now, now
 						haveLastPoint = false
 						wasOverlayActive = true
 					}
 
-					// Fullscreen callbacks can show the flyout while Cinematic Mode
-					// is already active. Reconcile local monitor state with the
-					// actual window visibility before applying the hide timeout.
+					// Fullscreen callbacks or a newly offered resume prompt can show
+					// the flyouts outside this monitor. Treat that transition as
+					// fresh activity so the entire overlay group gets its full delay.
 					visible = a.controller.IsVisible()
+					resumePending := a.pendingResume != nil
+					if resumePending && !wasResumePending {
+						a.showController()
+						visible = a.controller.IsVisible()
+						now := time.Now()
+						lastActivity, lastMouseMovement = now, now
+						a.setFullscreenCursorHidden(false)
+					}
+					wasResumePending = resumePending
 
 					insideMain, point := a.platform.CursorInsideWindow(a.win.NativeHandle())
 					insideController, _ := a.platform.CursorInsideWindow(a.controller.NativeHandle())
-					// The subtitle panel is a child flyout of the controller. Treat
-					// the pointer inside it as controller activity, or the auto-hide
-					// timer could hide its parent while the user is choosing a track.
-					if panel := a.fullscreenSubtitleFlyout; panel != nil && !panel.IsDestroyed() && panel.IsVisible() {
-						insidePanel, _ := a.platform.CursorInsideWindow(panel.NativeHandle())
-						insideController = insideController || insidePanel
+					// Treat every auxiliary flyout as an interactive surface. This
+					// prevents the group from hiding while the pointer is over the
+					// top bar, resume banner, or subtitle panel.
+					for _, overlay := range []*mygo.Window{
+						a.fullscreenHeader,
+						a.resumeBanner,
+						a.fullscreenSubtitleFlyout,
+					} {
+						if overlay == nil || overlay.IsDestroyed() || !overlay.IsVisible() {
+							continue
+						}
+						insideOverlay, _ := a.platform.CursorInsideWindow(overlay.NativeHandle())
+						insideController = insideController || insideOverlay
 					}
 					if !insideMain && !insideController {
-						if visible && a.pendingResume == nil {
+						if visible {
 							a.hideController()
 							visible = false
 						}
@@ -224,7 +320,7 @@ func (a *App) startControllerMonitor() {
 							visible = true
 						}
 					}
-					if visible && a.pendingResume == nil && !insideController && time.Since(lastActivity) >= hideDelay {
+					if visible && !insideController && time.Since(lastActivity) >= hideDelay {
 						a.hideController()
 						visible = false
 					}

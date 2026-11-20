@@ -167,6 +167,21 @@ func (p *Player) RemovePlaylistItem(index int) error {
 	return p.commandArgs("playlist-remove", strconv.Itoa(index))
 }
 
+// GetVideoHeight returns the decoded video's display height in pixels.
+func (p *Player) GetVideoHeight() (int, error) {
+	height, err := p.getInt64("height")
+	if err != nil {
+		height, err = p.getInt64("video-params/h")
+	}
+	if err != nil {
+		return 0, err
+	}
+	if height < 0 {
+		return 0, fmt.Errorf("MPV returned a negative video height")
+	}
+	return int(height), nil
+}
+
 func (p *Player) getInt64(name string) (int64, error) {
 	if p == nil || p.ctx == nil { return 0, fmt.Errorf("mpv is not initialized") }
 	var value int64
@@ -226,6 +241,22 @@ func (p *Player) SetVolume(volume float64) error {
 		return fmt.Errorf("set volume failed: %s", mpvErrorText(p.errorString(code)))
 	}
 	return nil
+}
+
+// CaptureThumbnail saves the currently rendered video frame as a PNG.
+// The caller supplies a cache path; this is intentionally a best-effort action.
+func (p *Player) CaptureThumbnail(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("thumbnail path is empty")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		return fmt.Errorf("create thumbnail cache: %w", err)
+	}
+	return p.commandArgs("screenshot-to-file", abs, "video")
 }
 
 func (p *Player) Stop() error {

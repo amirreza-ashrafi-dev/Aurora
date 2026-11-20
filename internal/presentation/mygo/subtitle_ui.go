@@ -97,25 +97,39 @@ func (a *App) resetSubtitleDelay() {
 }
 
 func (a *App) subtitleStudioControls(c *ui.Context) {
-	ui.Column(c).FillWidth().Padding(12).Gap(9).Children(func() {
-		ui.Row(c).FillWidth().Shrink(0).Gap(6).Children(func() {
-			ui.Text(c, "SUBTITLE STUDIO").FontSize(10).Bold().LetterSpacing(1).TextColor(ui.Hex(auroraText))
-			ui.Spacer(c)
-			if auroraQuietButton(c, "Load file…").Clicked() {
-				a.chooseSubtitleFile()
-			}
-			toggleLabel := "Disable"
-			if a.subtitleDisabled { toggleLabel = "Enable" }
-			if auroraQuietButton(c, toggleLabel).Clicked() {
-				a.toggleSubtitleVisibility()
-			}
-		})
+	ui.Column(c).FillWidth().Padding(16).Gap(13).Children(func() {
+		ui.Row(c).FillWidth().Shrink(0).Gap(6).Padding(0, 0, 10, 0).
+			Children(func() {
+				ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+					ui.Box(c).Size(7, 7).Radius(4).Background(ui.Hex(auroraAccent))
+					ui.Text(c, "SUBTITLE STUDIO").FontSize(11).Bold().
+						LetterSpacing(1.1).TextColor(ui.Hex(auroraText))
+				})
+				ui.Spacer(c)
+				if auroraQuietButton(c, "Load file…").Clicked() {
+					a.chooseSubtitleFile()
+				}
+				toggleLabel := "Disable"
+				if a.subtitleDisabled { toggleLabel = "Enable" }
+				if auroraQuietButton(c, toggleLabel).Clicked() {
+					a.toggleSubtitleVisibility()
+				}
+				if auroraQuietButton(c, "×").Width(32).Tooltip("Close Subtitle Studio").Clicked() {
+					a.closeSubtitleFlyout()
+					a.closeFullscreenSubtitleFlyout()
+				}
+			})
 
-		ui.Text(c, "FONT").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+		subtitleSectionHeading(c, "FONT")
 		ui.Row(c).FillWidth().Shrink(0).Gap(5).Children(func() {
 			for _, font := range []string{"Segoe UI", "Arial", "Tahoma", "Yu Gothic"} {
 				name := font
 				button := auroraQuietButton(c, name).Grow(1).NoWrap().Ellipsis("…")
+				if a.subtitleStyle.FontFamily == name {
+					button.Background(ui.Hex(auroraAccentSoft)).
+						Border(1, ui.Hex("#80672D")).
+						TextColor(ui.Hex("#EBD79D"))
+				}
 				if button.Clicked() {
 					style := a.subtitleStyle
 					style.FontFamily = name
@@ -151,7 +165,7 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 			}
 		})
 
-		ui.Text(c, "TEXT COLOR").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+		subtitleSectionHeading(c, "TEXT COLOR")
 		ui.Row(c).FillWidth().Shrink(0).Gap(6).Children(func() {
 			for _, color := range []string{"#FFFFFFFF", "#FFFFD166", "#FFFF6B6B", "#FF8BE9FD"} {
 				value := color
@@ -171,7 +185,7 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 				a.applySubtitleStyle(style)
 			}
 		})
-		ui.Text(c, "OUTLINE COLOR").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+		subtitleSectionHeading(c, "OUTLINE COLOR")
 		ui.Row(c).FillWidth().Shrink(0).Gap(6).Children(func() {
 			ui.Text(c, "Choose outline color").FontSize(9).TextColor(ui.Hex(auroraMuted))
 			ui.Spacer(c)
@@ -185,7 +199,7 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 			}
 		})
 
-		ui.Text(c, "POSITION").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+		subtitleSectionHeading(c, "POSITION")
 		ui.Row(c).FillWidth().Shrink(0).Gap(7).Children(func() {
 			if auroraQuietButton(c, "Move up").Clicked() {
 				style := a.subtitleStyle
@@ -200,7 +214,7 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 			}
 		})
 
-		ui.Text(c, "SYNCHRONIZATION").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+		subtitleSectionHeading(c, "SYNCHRONIZATION")
 		ui.Row(c).FillWidth().Shrink(0).Gap(6).Children(func() {
 			if auroraQuietButton(c, "−0.1s").Clicked() {
 				a.adjustSubtitleDelay(-0.1)
@@ -215,7 +229,7 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 			}
 		})
 
-		ui.Text(c, "TRACKS").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+		subtitleSectionHeading(c, "TRACKS")
 		ui.Row(c).FillWidth().Shrink(0).Gap(6).Children(func() {
 			if auroraQuietButton(c, "Next track").Clicked() {
 				if tracks, ok := a.subtitle.(interface{ CycleSubtitleTrack() error }); ok {
@@ -248,7 +262,7 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 		})
 
 		if len(a.subtitleCandidates) > 0 {
-			ui.Text(c, "MATCHING FILES").FontSize(8).Bold().TextColor(ui.Hex(auroraMuted))
+			subtitleSectionHeading(c, "MATCHING FILES")
 			for _, candidate := range a.subtitleCandidates {
 				path := candidate
 				item := auroraQuietButton(c, filepath.Base(path)).FillWidth().NoWrap().Ellipsis("…")
@@ -264,6 +278,16 @@ func (a *App) subtitleStudioControls(c *ui.Context) {
 			}
 		}
 		ui.Text(c, "ASS/SSA and image-based subtitles may not support every appearance setting.").FontSize(8).TextColor(ui.Hex(auroraMuted))
+	})
+}
+
+
+func subtitleSectionHeading(c *ui.Context, label string) {
+	ui.Row(c).FillWidth().Shrink(0).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Box(c).Size(5, 5).Radius(3).Background(ui.Hex(auroraAccent))
+		ui.Text(c, label).FontSize(8).Bold().LetterSpacing(0.9).
+			TextColor(ui.Hex(auroraMuted))
+		ui.Box(c).Grow(1).Height(1).Background(ui.Hex(auroraBorderSoft))
 	})
 }
 
@@ -512,8 +536,8 @@ func (a *App) subtitleStudioFlyoutButtonAt(
 		Anchor:    anchor,
 		Placement: mygo.PlacementTopEnd,
 		Gap:       8,
-		Width:     440,
-		Height:    500,
+		Width:     452,
+		Height:    786,
 		Focusable: true,
 		Hidden:    true,
 		Shadow:    true,
@@ -533,8 +557,8 @@ func (a *App) subtitleStudioFlyoutButtonAt(
 
 func (a *App) subtitleStudioFlyoutView(c *ui.Context) {
 	applyAuroraTheme(c)
-	c.Root().Background(ui.Hex(auroraPanel))
-	ui.Column(c).Fill().Background(ui.Hex(auroraPanel)).Children(func() {
+	c.Root().Background(ui.Hex("#0C0B09"))
+	ui.Column(c).Fill().Padding(1).Background(ui.Hex("#0C0B09")).Border(1, ui.Hex("#6F5928")).Radius(14).Children(func() {
 		ui.Scroll(c).Fill().Children(func() {
 			a.subtitleStudioControls(c)
 		})

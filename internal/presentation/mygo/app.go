@@ -4,19 +4,28 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	mygo "github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"my-go/internal/application"
 	"my-go/internal/domain"
+	"my-go/resources"
 )
 
 // App coordinates MyGo windows and presentation state while depending only on
 // application ports for MPV playback and native Windows operations.
 type App struct {
-	win        *mygo.Window
-	controller *mygo.Window
+	win          *mygo.Window
+	controller   *mygo.Window
+	resumeBanner          *mygo.Window
+	resumeBannerAnchor    mygo.Rectangle
+	fullscreenHeader     *mygo.Window
+	fullscreenHeaderAnchor mygo.Rectangle
+	volumeOSD *mygo.Window
+	volumeOSDUntil time.Time
+	wheelRemainder int32
 
 	platform      application.NativePlatform
 	videoHWND     uintptr
@@ -31,6 +40,8 @@ type App struct {
 	subtitleStyle domain.SubtitleStyle
 	subtitleDelay float64
 	subtitleDisabled bool
+	queueThumbnails map[string]*ui.Bitmap
+	thumbnailCaptured map[string]bool
 	subtitleMenuOpen bool
 	fullscreenSubtitleMenuOpen bool
 	subtitleFlyout *mygo.Window
@@ -56,6 +67,7 @@ type App struct {
 	videoStageDPI           uint32
 	hasVideoStageBounds     bool
 	videoLayoutFramePending bool
+	videoHeight             int
 
 	path        string
 	playlist    []string
@@ -89,6 +101,8 @@ func New(platform application.NativePlatform, playerFactory application.PlayerFa
 		subtitlePreferences: subtitlePreferences,
 		subtitleAssignments: subtitleAssignments,
 		subtitleAssignmentRecords: make(map[string]domain.SubtitleAssignment),
+		queueThumbnails: make(map[string]*ui.Bitmap),
+		thumbnailCaptured: make(map[string]bool),
 		subtitlePrefs: domain.SubtitlePreferences{Global: domain.DefaultSubtitleStyle()},
 		subtitleStyle: domain.DefaultSubtitleStyle(),
 		historyRecords: make(map[string]domain.PlaybackProgress),
@@ -106,15 +120,22 @@ func (a *App) Run() error {
 func (a *App) onReady() {
 	a.win = mygo.NewWindow(mygo.WindowOptions{
 		Title:             "Aurora Player",
-		Width:             1200,
-		Height:            900,
-		MinWidth:          950,
+		Width:             1280,
+		Height:            1024,
+		MinWidth:          960,
 		MinHeight:         720,
 		TitleBarStyle:     mygo.TitleBarHidden,
-		TitleBarHeight:    54,
+		TitleBarHeight:    40,
 		HideWindowButtons: true,
 		Content:           ui.View(a.view),
 	})
+
+	// Set the native window icon explicitly so development runs (go run/go tool
+	// mygo dev) show Aurora's logo in the Windows taskbar as well as packaged
+	// builds, which take their executable icon from mygo.json.
+	if err := a.win.SetIcon(resources.IconPNG); err != nil {
+		log.Printf("set Aurora window icon: %v", err)
+	}
 
 	var err error
 	a.videoHWND, err = a.platform.CreateVideoHost(a.win.NativeHandle())
@@ -134,6 +155,14 @@ func (a *App) onReady() {
 		})
 	}); err != nil {
 		log.Printf("install video subtitle drop handler: %v", err)
+	}
+	if err := a.platform.InstallVideoMouseWheel(a.videoHWND, func(delta int32) {
+		if a.win == nil || a.win.IsDestroyed() { return }
+		a.win.Update(func() {
+			if !a.win.IsDestroyed() { a.handleVolumeWheel(delta) }
+		})
+	}); err != nil {
+		log.Printf("install video mouse-wheel handler: %v", err)
 	}
 
 	if a.playerFactory != nil {

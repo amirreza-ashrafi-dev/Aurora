@@ -124,10 +124,17 @@ func validSubtitleColor(value string) bool {
 func IsSubtitleFile(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".srt", ".ass", ".ssa", ".vtt", ".sub", ".idx":
-		return true
+		// Keep extension-based checks useful for paths that have not been
+		// created yet, but never treat an existing directory as a subtitle.
 	default:
 		return false
 	}
+
+	info, err := os.Stat(path)
+	if err == nil {
+		return info.Mode().IsRegular()
+	}
+	return os.IsNotExist(err)
 }
 
 // MatchSubtitleFiles returns subtitle files whose filename stem belongs to

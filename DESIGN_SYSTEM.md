@@ -34,6 +34,8 @@ The following dark surface colors were sampled from the supplied screen referenc
 - Stage-to-queue gap: 16 px.
 - Main video / queue split at 1280 px: 912 px / 320 px.
 - Queue width: 320 px.
+- Queue entries are compact video cards with a 16:9 preview, title, format metadata, active `PLAYING` badge and separate remove action.
+- Queue preview images are captured from MPV after playback starts and cached per media path; unplayed items use the branded Aurora placeholder.
 - Main footer: approximately 170.5 px in the Figma reference.
 - Custom header: 40 px.
 - Use restrained 1 px warm borders and subtle shadows.
@@ -92,6 +94,7 @@ Preserve the Figma section order and existing functionality:
 
 ## Remaining asset work
 
-- Add the exact logo image supplied separately in chat as a local embedded asset and create the required Windows icon resources from the full logo, preserving the full composition as requested.
+- Add the exact 512 × 512 logo image supplied separately in chat as a local embedded asset and set `mygo.json`'s `icon` field to `resources/icon.png`; preserve the full composition for the taskbar and packaged application icon.
+- Confirm the taskbar icon rendering at common Windows shell sizes (16, 24, 32, 48, 256 px).
 - Bundle TeX Gyre Heros font files with their GUST Font License notice once the exact upstream distribution files have been added to the repository.
 - Re-export exact Figma color, typography, gradient, shadow and component variables when available. Current values above distinguish sampled reference colors from confirmed measurements.

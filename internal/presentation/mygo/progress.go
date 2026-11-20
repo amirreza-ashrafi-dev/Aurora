@@ -251,9 +251,9 @@ func (a *App) updateTimeline(dragging, changed bool) {
 func (a *App) resumePrompt(c *ui.Context) {
 	if a.pendingResume == nil { return }
 	record := *a.pendingResume
-	ui.Row(c).FillWidth().Gap(10).Padding(10, 12).Background(ui.Hex("#25213A")).Border(1, ui.Hex("#65518C")).Radius(10).Children(func() {
+	ui.Row(c).FillWidth().Gap(10).Padding(10, 12).Background(ui.Hex("#1B1810")).Border(1, ui.Hex("#80672D")).Radius(10).Children(func() {
 		ui.Column(c).Grow(1).Gap(2).Children(func() {
-			ui.Text(c, "CONTINUE WATCHING?").FontSize(9).Bold().TextColor(ui.Hex("#DCCEFF"))
+			ui.Text(c, "CONTINUE WATCHING?").FontSize(9).Bold().TextColor(ui.Hex(auroraAccent))
 			ui.Text(c, filepath.Base(record.MediaPath)+"  ·  "+formatTime(record.Position)).FontSize(12).Bold().TextColor(ui.Hex(auroraText))
 		})
 		if auroraQuietButton(c, "Start over").Clicked() { a.chooseStartOver() }

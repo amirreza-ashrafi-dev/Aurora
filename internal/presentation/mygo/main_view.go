@@ -104,6 +104,10 @@ func (a *App) normalView(c *ui.Context) {
 									mediaPath := a.playlist[i]
 									title := queueCardTitle(mediaPath)
 									active := i == a.playlistPos
+									formatLabel := queueCardFormat(mediaPath)
+									if active && a.state.Duration > 0 {
+										formatLabel += "  ·  " + formatTime(a.state.Duration)
+									}
 									cardBorder := auroraBorderSoft
 									if active {
 										cardBorder = "#80672D"
@@ -142,7 +146,7 @@ func (a *App) normalView(c *ui.Context) {
 													if active { titleColor = "#F2D995" }
 													ui.Text(c, title).FontSize(10).Bold().
 														TextColor(ui.Hex(titleColor)).Ellipsis("…")
-													ui.Text(c, queueCardFormat(mediaPath)).
+													ui.Text(c, formatLabel).
 														FontSize(7).LetterSpacing(0.9).
 														TextColor(ui.Hex(auroraMuted))
 												})

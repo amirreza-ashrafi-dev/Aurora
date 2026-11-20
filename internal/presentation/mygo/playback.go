@@ -18,9 +18,11 @@ func (a *App) togglePlayPause() {
 	if next {
 		a.status = "Paused"
 		a.scheduleCurrentProgressSave()
+		a.captureMemorySample("playback_paused")
 	} else {
 		a.status = "Playing"
 		a.cancelPendingProgressSave()
+		a.captureMemorySample("playback_resumed")
 	}
 }
 

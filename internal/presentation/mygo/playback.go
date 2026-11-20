@@ -47,6 +47,7 @@ func (a *App) changeVolume(amount float64) {
 		return
 	}
 	a.state.Volume = next
+	a.showVolumeOSD()
 }
 
 func (a *App) toggleFullscreen() {

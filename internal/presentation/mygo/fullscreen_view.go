@@ -11,7 +11,6 @@ func (a *App) fullscreenControls(c *ui.Context) {
 	applyAuroraTheme(c)
 	c.Root().Background(ui.Transparent)
 	ui.Column(c).Fill().Padding(9).Children(func() {
-		a.resumePrompt(c)
 		ui.Column(c).Fill().Padding(15, 18).Gap(11).
 			Background(ui.Hex("#080807")).
 			Border(1, ui.Hex("#665323")).

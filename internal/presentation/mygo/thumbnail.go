@@ -67,6 +67,9 @@ func (a *App) captureQueueThumbnail(mediaPath string) {
 			if decodeErr != nil {
 				return
 			}
+			width, height := bitmap.Size()
+			a.thumbnailRasterBytes[mediaPath] = uint64(width) * uint64(height) * 4
+			a.thumbnailEncodedBytes[mediaPath] = uint64(len(data))
 			a.queueThumbnails[mediaPath] = bitmap
 			a.win.Invalidate()
 		})

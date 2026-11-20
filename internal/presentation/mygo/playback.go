@@ -18,9 +18,11 @@ func (a *App) togglePlayPause() {
 	if next {
 		a.status = "Paused"
 		a.scheduleCurrentProgressSave()
+		a.captureMemorySample("playback_paused")
 	} else {
 		a.status = "Playing"
 		a.cancelPendingProgressSave()
+		a.captureMemorySample("playback_resumed")
 	}
 }
 
@@ -92,6 +94,7 @@ func (a *App) setCinematicMode(enabled bool) {
 }
 
 func (a *App) registerShortcuts(c *ui.Context) {
+	c.OnWindowShortcut(ui.Ctrl|ui.Shift, ui.KeyM, a.toggleMemoryMonitor)
 	c.OnWindowShortcut(0, ui.KeyF, a.toggleFullscreen)
 	c.OnWindowShortcut(0, ui.KeyF11, a.toggleFullscreen)
 	c.OnWindowShortcut(ui.Alt, ui.KeyEnter, a.toggleFullscreen)

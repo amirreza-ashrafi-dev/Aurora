@@ -8,6 +8,11 @@ func (a *App) Close() {
 		a.closeFullscreenSubtitleFlyout()
 		a.closeResumeBanner()
 		a.closeVolumeOSD()
+		a.stopMemoryMonitor()
+		if a.memoryWindow != nil && !a.memoryWindow.IsDestroyed() {
+			a.memoryWindow.Destroy()
+			a.memoryWindow = nil
+		}
 		if a.fullscreenHeader != nil && !a.fullscreenHeader.IsDestroyed() {
 			a.fullscreenHeader.Destroy()
 			a.fullscreenHeader = nil
@@ -23,10 +28,7 @@ func (a *App) Close() {
 			}
 			a.controller = nil
 		}
-		if a.player != nil {
-			a.player.Close()
-			a.player = nil
-		}
+		a.closePlayer()
 		if a.videoHWND != 0 && a.platform != nil {
 			a.platform.RemoveVideoSubclass(a.videoHWND)
 			a.platform.DestroyWindow(a.videoHWND)

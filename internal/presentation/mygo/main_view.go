@@ -10,6 +10,7 @@ import (
 )
 
 func (a *App) view(c *ui.Context) {
+	a.applyPendingPlaylistRemovals()
 	a.registerShortcuts(c)
 	applyAuroraTheme(c)
 	a.syncVideoHostToStage(c)
@@ -205,7 +206,8 @@ func (a *App) normalView(c *ui.Context) {
 												TextColor(ui.Hex(auroraMuted)).
 												Tooltip("Remove from queue")
 											if remove.Clicked() {
-												a.removePlaylistIndex(index)
+												a.queuePlaylistRemoval(mediaPath)
+												c.After(time.Millisecond)
 											}
 										})
 								}).Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(0).Gap(8)

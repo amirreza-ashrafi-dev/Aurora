@@ -8,6 +8,9 @@ import (
 )
 
 func (a *App) startPolling() {
+	if a == nil || a.player == nil || a.pollStop != nil {
+		return
+	}
 	a.pollStop = make(chan struct{})
 	a.pollDone = make(chan struct{})
 	go func() {

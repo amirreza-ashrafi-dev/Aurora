@@ -27,10 +27,22 @@ type App struct {
 	volumeOSDUntil time.Time
 	wheelRemainder int32
 
+	memoryWindow *mygo.Window
+	memoryMonitorStop chan struct{}
+	memorySamples []memorySample
+	memoryExportPath string
+	memoryGCInProgress bool
+	thumbnailRasterBytes map[string]uint64
+	thumbnailEncodedBytes map[string]uint64
+	thumbnailCaptureTokens map[string]uint64
+	thumbnailCaptureSequence uint64
+
 	platform      application.NativePlatform
 	videoHWND     uintptr
 	player        application.Player
 	playerFactory application.PlayerFactory
+	// Serializes background MPV thumbnail commands against player teardown.
+	playerCommandMu sync.RWMutex
 	subtitle application.SubtitlePlayer
 	subtitlePreferences application.SubtitlePreferencesRepository
 	subtitleAssignments application.SubtitleAssignmentRepository
@@ -72,6 +84,7 @@ type App struct {
 	path        string
 	playlist    []string
 	playlistPos int
+	pendingPlaylistRemoval []string
 	status      string
 	state       domain.PlaybackState
 	scrubbing   bool
@@ -103,6 +116,9 @@ func New(platform application.NativePlatform, playerFactory application.PlayerFa
 		subtitleAssignmentRecords: make(map[string]domain.SubtitleAssignment),
 		queueThumbnails: make(map[string]*ui.Bitmap),
 		thumbnailCaptured: make(map[string]bool),
+		thumbnailRasterBytes: make(map[string]uint64),
+		thumbnailEncodedBytes: make(map[string]uint64),
+		thumbnailCaptureTokens: make(map[string]uint64),
 		subtitlePrefs: domain.SubtitlePreferences{Global: domain.DefaultSubtitleStyle()},
 		subtitleStyle: domain.DefaultSubtitleStyle(),
 		historyRecords: make(map[string]domain.PlaybackProgress),
@@ -165,42 +181,24 @@ func (a *App) onReady() {
 		log.Printf("install video mouse-wheel handler: %v", err)
 	}
 
-	if a.playerFactory != nil {
-		a.player, err = a.playerFactory(a.videoHWND)
-	}
-	if err != nil {
-		a.status = err.Error()
-		log.Println(err)
-	} else if a.player == nil {
-		a.status = "libmpv is not initialized"
-	} else {
-		a.status = "Ready — add videos to your playlist"
-		if err := a.player.SetVolume(a.state.Volume); err != nil {
-			a.status = err.Error()
+	// Keep libmpv unloaded until the first valid video is added. The native
+	// video host already exists, so the player can attach to it on demand.
+	a.status = "Ready — add videos to your playlist"
+	a.loadProgressHistory()
+	a.loadSubtitleAssignments()
+	if a.subtitlePreferences != nil {
+		prefs, prefErr := a.subtitlePreferences.Load()
+		if prefErr != nil {
+			log.Printf("load subtitle preferences: %v", prefErr)
+		} else {
+			a.subtitlePrefs = prefs
+			a.subtitleStyle = application.SubtitleStyleForLanguage(prefs, "und")
 		}
-		a.loadProgressHistory()
-		a.loadSubtitleAssignments()
-		a.win.OnFileDrop(func(event *mygo.FileDropEvent) {
-			if event == nil { return }
-			a.handleDroppedSubtitleFiles(event.Paths)
-		})
-		a.subtitle, _ = a.player.(application.SubtitlePlayer)
-		if a.subtitlePreferences != nil {
-			prefs, prefErr := a.subtitlePreferences.Load()
-			if prefErr != nil {
-				log.Printf("load subtitle preferences: %v", prefErr)
-			} else {
-				a.subtitlePrefs = prefs
-				a.subtitleStyle = application.SubtitleStyleForLanguage(prefs, "und")
-				if a.subtitle != nil {
-					if styleErr := a.subtitle.SetSubtitleStyle(a.subtitleStyle); styleErr != nil {
-						log.Printf("apply default subtitle style: %v", styleErr)
-					}
-				}
-			}
-		}
-		a.startPolling()
 	}
+	a.win.OnFileDrop(func(event *mygo.FileDropEvent) {
+		if event == nil { return }
+		a.handleDroppedSubtitleFiles(event.Paths)
+	})
 
 	a.win.OnReadyToShow(func() {
 		a.createFullscreenController()
@@ -243,6 +241,97 @@ func (a *App) onReady() {
 		a.updateControllerBounds()
 		a.logDiagnostics("leave-fullscreen")
 	})
+}
+
+
+// ensurePlayer initializes libmpv only when a valid video is about to be
+// loaded. This keeps the empty player free of MPV's decoder and render stack.
+func (a *App) ensurePlayer() error {
+	if a == nil {
+		return fmt.Errorf("player is unavailable")
+	}
+	if a.player != nil {
+		// Keep the initialized context across queue sessions; only polling stops.
+		a.startPolling()
+		return nil
+	}
+	if a.playerFactory == nil {
+		return fmt.Errorf("MPV player is unavailable on this platform")
+	}
+	if a.videoHWND == 0 {
+		return fmt.Errorf("video surface is not ready")
+	}
+	player, err := a.playerFactory(a.videoHWND)
+	if err != nil {
+		return err
+	}
+	if player == nil {
+		return fmt.Errorf("MPV player factory returned no player")
+	}
+	if err := player.SetVolume(a.state.Volume); err != nil {
+		player.Close()
+		return fmt.Errorf("set initial player volume: %w", err)
+	}
+	a.playerCommandMu.Lock()
+	a.player = player
+	a.subtitle, _ = player.(application.SubtitlePlayer)
+	a.playerCommandMu.Unlock()
+	if a.subtitle != nil {
+		if err := a.subtitle.SetSubtitleStyle(a.subtitleStyle); err != nil {
+			log.Printf("apply default subtitle style: %v", err)
+		}
+	}
+	a.startPolling()
+	return nil
+}
+
+// unloadPlayerMedia stops playback and releases the GPU video output when the
+// linked MPV build supports runtime VO reinitialization. Older MPV builds
+// cannot safely reconfigure the VO at runtime, so release their whole context.
+func (a *App) unloadPlayerMedia() error {
+	if a == nil {
+		return nil
+	}
+	a.playerCommandMu.Lock()
+	defer a.playerCommandMu.Unlock()
+
+	player := a.player
+	if player == nil {
+		return nil
+	}
+	if managed, ok := player.(interface {
+		SupportsRuntimeVideoOutputRelease() bool
+		Unload() error
+	}); ok {
+		if !managed.SupportsRuntimeVideoOutputRelease() {
+			log.Printf("MPV build does not support runtime video-output release; destroying its context")
+			a.closePlayerLocked()
+			return nil
+		}
+		return managed.Unload()
+	}
+	if unloader, ok := player.(interface{ Unload() error }); ok {
+		return unloader.Unload()
+	}
+	return player.Stop()
+}
+
+// closePlayer waits for any in-flight background MPV command before destroying
+// the context or unloading its DLL. Callers must stop the polling goroutine first.
+func (a *App) closePlayer() {
+	a.playerCommandMu.Lock()
+	defer a.playerCommandMu.Unlock()
+	a.closePlayerLocked()
+}
+
+// closePlayerLocked releases the player while playerCommandMu is held.
+func (a *App) closePlayerLocked() {
+	player := a.player
+	a.player = nil
+	a.subtitle = nil
+	if player != nil {
+		player.Close()
+	}
 }
 
 func formatTime(seconds float64) string {

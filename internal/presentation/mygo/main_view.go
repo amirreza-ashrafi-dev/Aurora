@@ -31,7 +31,12 @@ func (a *App) view(c *ui.Context) {
 func (a *App) normalView(c *ui.Context) {
 	ui.Column(c).Fill().Background(ui.Hex(auroraBackground)).Children(func() {
 		a.windowTitleBar(c)
-		a.resumePrompt(c)
+		if a.pendingResume != nil {
+			// Keep the normal-window resume choice inset from the window edges.
+			ui.Column(c).FillWidth().Padding(12, 24, 0, 24).Children(func() {
+				a.resumePrompt(c)
+			})
+		}
 		ui.Column(c).Fill().Padding(16).Gap(12).Background(ui.Hex(auroraBackground)).Children(func() {
 			// The reference uses a 912 / 320 split at 1280 px, with a 16 px gap.
 			// Grow keeps the video stage responsive while the queue stays fixed.

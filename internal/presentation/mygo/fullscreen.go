@@ -13,7 +13,7 @@ import (
 const (
 	controllerWidth  = 896
 	controllerHeight = 194
-	controllerBottom = 24
+	controllerBottom = 32
 )
 
 func (a *App) showFullscreenHeader() {
@@ -24,7 +24,7 @@ func (a *App) showFullscreenHeader() {
 	if bounds.Width < 1 {
 		return
 	}
-	width := min(bounds.Width-32, 1280)
+	width := min(bounds.Width, 1280)
 	if width < 320 {
 		width = bounds.Width
 	}
@@ -41,7 +41,7 @@ func (a *App) showFullscreenHeader() {
 	}
 	a.fullscreenHeader = mygo.NewFlyout(mygo.FlyoutOptions{
 		Parent: a.win, Anchor: anchor, Placement: mygo.PlacementBottom,
-		Gap: 8, Width: width, Height: 58, Focusable: false,
+		Gap: 0, Width: width, Height: 72, Focusable: false,
 		Hidden: true, Content: ui.View(a.fullscreenHeaderView),
 	})
 	a.fullscreenHeaderAnchor = anchor

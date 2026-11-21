@@ -482,8 +482,13 @@ func (a *App) filmstripView(c *ui.Context) {
 				}
 
 				frames := a.visibleFilmstripFrames()
-				if pointerActive && len(frames) > 0 && bounds.W > 0 {
-					ratio := float64(x / bounds.W)
+				if pointerActive && len(frames) > 0 && bounds.W > 6 {
+					// PointerPosition is local to the row's outer bounds.
+					// Exclude the row's 3-DIP left/right padding so the
+					// first and last thumbnail centers match the pointer.
+					contentWidth := bounds.W - 6
+					contentX := x - 3
+					ratio := float64(contentX / contentWidth)
 					index := filmstripFrameIndexAtRatio(ratio, len(frames))
 					// Selecting the frame under the pointer keeps the visual
 					// focus, timestamp, and eventual seek on the same frame.

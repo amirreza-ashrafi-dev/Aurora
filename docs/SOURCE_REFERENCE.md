@@ -2,7 +2,7 @@
 
 This reference describes the tracked Go source files, their package responsibilities, exported/unexported types, functions, methods, and tests. The [Developer Guide](DEVELOPER_GUIDE.md) explains architecture and complete user workflows; this file is the code-navigation catalogue.
 
-The audit counted 66 tracked files: 49 Go files (including tests), four PNG files, two Git LFS-managed DLL objects, and the remaining documentation/configuration/build/license files. Build-tagged files are alternatives: only the file matching the current GOOS is compiled.
+The feature-branch audit counted 81 tracked files: 58 Go files (including tests), four PNG assets, three Git LFS-managed runtime binaries (two MPV/D3D DLLs and FFmpeg), and 16 other documentation/configuration/build/license files. Build-tagged files are alternatives: only the file matching the current GOOS is compiled. The inventory includes the timeline filmstrip implementation.
 
 # 1. Entrypoints and bootstrap
 
@@ -19,8 +19,9 @@ Creates the concrete application dependencies and starts the app:
 2. Builds a PlayerFactory closure that resolves MyGo's resource directory and calls mpv.New when a video HWND is supplied.
 3. Resolves the user's config directory.
 4. Creates history and subtitle JSON repositories.
-5. Injects those dependencies into presentation.New.
-6. Defers App.Close, then calls App.Run.
+5. Resolves MyGo's packaged resources directory and creates ffmpeg.NewFilmstripGenerator(resourcesDir).
+6. Injects the platform, player factory, history/subtitle repositories, and filmstrip generator into presentation.New.
+7. Defers App.Close, then calls App.Run.
 
 Returns initialization or event-loop errors. If initialization after platform creation fails, the platform is closed before returning.
 
@@ -55,6 +56,16 @@ X, Y, W, H form the neutral video-stage geometry passed from presentation to the
 ### Point
 
 X and Y represent a screen-space cursor point in physical pixels.
+
+## internal/domain/filmstrip.go
+
+### Filmstrip
+
+Describes a disk-backed collection of preview frames for one media file. It stores the media duration, nominal sample interval, and ordered frame metadata. Paths point to compressed files on disk; the UI should decode only currently visible frames.
+
+### FilmstripFrame
+
+Stores the presentation timestamp, JPEG path, and encoded file size for one preview image.
 
 ## internal/domain/subtitles.go
 
@@ -101,6 +112,10 @@ The general playback contract:
 - Close() releases the player.
 
 The Windows MPV adapter implements this interface; presentation does not depend on libmpv types.
+
+### FilmstripGenerator interface
+
+`Ensure(ctx, mediaPath, duration)` returns a complete cached/generated `domain.Filmstrip`. Implementations must honor context cancellation and avoid retaining decoded images. The FFmpeg adapter implements this optional generation capability; normal playback does not depend on it.
 
 ### ProgressRepository interface
 
@@ -304,7 +319,73 @@ Rejects content above 1 MiB, creates the parent directory, writes to a same-dire
 
 normalizePath trims, creates an absolute path and cleans it. Unlike history normalization, it does not call EvalSymlinks. pathKey lowercases on Windows.
 
-# 5. MPV adapter
+# 5. FFmpeg filmstrip adapter
+
+## internal/adapters/ffmpeg/filmstrip.go
+
+### FilmstripGenerator and disk manifest types
+
+The adapter owns the FFmpeg executable path, cache root, a single-generation/cache-publication lock, and a two-slot worker semaphore. The manifest records format version, source file size and modification time, media duration, sample interval, frame dimensions, and each frame's file name, timestamp, and encoded byte size.
+
+### NewFilmstripGenerator(resourcesDir) *FilmstripGenerator
+
+Resolves FFmpeg from the packaged resource directory, beside the application executable, development locations, or PATH. The cache root is under the OS user cache directory in `Aurora Player/filmstrip`. Missing FFmpeg is reported when filmstrip generation is requested; it does not stop normal playback.
+
+### NewFilmstripGeneratorAt(ffmpegPath, cacheRoot) *FilmstripGenerator
+
+Creates an adapter with explicit paths for tests and controlled use.
+
+### (FilmstripGenerator).Ensure(ctx, mediaPath, duration)
+
+Returns a valid cached filmstrip or generates one. This is the simple application-port method and delegates to progressive generation with no update callback.
+
+### (FilmstripGenerator).EnsureWithProgress(...)
+
+Compatibility wrapper that reports completed/total counts without exposing partial frame paths.
+
+### (FilmstripGenerator).EnsureProgressive(...)
+
+Validates the source and duration, checks the fingerprinted cache, serializes cache generation, and creates up to 48 160×90 JPEG previews. It prioritizes samples by absolute timestamp distance from the preferred playhead. Two workers may extract frames concurrently; each FFmpeg process uses one decode thread and one filter thread. Completed paths are sent to the presentation while unready frame slots retain their timeline positions.
+
+The adapter does not publish a manifest until every frame is complete. It writes the manifest to a temporary file and renames it into place. A failed or canceled generation removes its staging directory, so an incomplete set is not treated as a valid cache.
+
+### prioritizedSampleOrder(...) and sampleTimeDistance(...)
+
+Sort sample indexes by their actual timestamp distance from the preferred position. Stable sorting keeps ties deterministic.
+
+### runBoundedJobs(...)
+
+Runs a fixed number of jobs concurrently, cancels remaining work after the first failure, and sends completion callbacks serially on the caller goroutine.
+
+### sampleIntervalSeconds(...) and sampleFrameCount(...)
+
+Choose a time interval and cap the filmstrip at 48 frames.
+
+### ffmpegFrameArgs(...) and videoFilter()
+
+Build the FFmpeg arguments and scale/pad output to 160×90. Input seeking is placed before the input file; the child is limited to one decoder and one filter thread.
+
+### loadCachedFilmstrip(...) and cacheKey(...)
+
+Validate the manifest and every referenced image, reject unsafe file names and unexpected image sizes, and fingerprint the source path, file size, modification time, duration, format version, and dimensions.
+
+### trimDiskCache(...) and touchDirectory(...)
+
+Update cache recency and enforce a best-effort 512 MiB LRU disk budget.
+
+## internal/adapters/ffmpeg/process_windows.go
+
+### configureFFmpegCommand(cmd)
+
+Sets `HideWindow` and `CREATE_NO_WINDOW` on Windows child processes. This prevents background thumbnail extraction from opening a visible terminal window for each FFmpeg process.
+
+## internal/adapters/ffmpeg/process_other.go
+
+### configureFFmpegCommand(cmd)
+
+A non-Windows no-op so the adapter remains buildable on other platforms without Windows process flags.
+
+# 6. MPV adapter
 
 ## internal/adapters/mpv/player_windows.go
 
@@ -448,7 +529,7 @@ Parses major/minor from the first numeric part of the reported version. Returns 
 
 Selected for !windows. Defines the same Player type and method set so dependent packages compile. New and all operations return “Windows only” errors (query operations also return a zero/empty value); SupportsRuntimeVideoOutputRelease returns false; Close is a no-op. This is a compile-time stub, not an alternative decoder.
 
-# 6. Windows platform adapter
+# 7. Windows platform adapter
 
 ## internal/platform/windows/platform_windows.go
 
@@ -525,7 +606,7 @@ Frees comctl32, shell32, and user32 handles and clears them.
 
 Selected for !windows. New and operations that require native window creation/placement return Windows-only errors. CursorInsideWindow returns false/empty point; WindowDPI returns 96; show/update/destroy methods return zero; subclass removal, diagnostics, and Close do nothing. It keeps the interface compiling without simulating a video host.
 
-# 7. MyGo presentation package
+# 8. MyGo presentation package
 
 All files below use package presentation under internal/presentation/mygo. They share App state and the MyGo UI-thread lifecycle.
 
@@ -542,6 +623,9 @@ All files below use package presentation under internal/presentation/mygo. They 
 - playerCommandMu: read/write lock that prevents player teardown during a background native thumbnail call.
 - history, historyRecords, pendingResume: history repository, in-memory index, and pending resume choice.
 - subtitlePreferences, subtitleAssignments: persistence contracts for global styles and per-video choices.
+- filmstripGenerator: optional application capability used to create/reuse disk-cached timeline frames.
+- filmstrip manifest/progress/token/cancel fields: UI-thread-owned frame metadata, progressive-generation state, and stale-callback protection.
+- filmstripBitmaps and filmstripBitmapClock: bounded decoded-image cache and LRU clock; timelinePreviewPosition and scrubbing keep preview separate from committed playback position.
 - subtitle state/maps: cached assignments, candidates, preferences/style, delay, visibility, active language.
 - thumbnail maps/counters: bitmaps, capture markers/tokens, memory estimates and token sequence.
 - memory fields: sampler stop channel, sample slice, export message, GC state.
@@ -558,7 +642,7 @@ Most App state is UI-thread-owned. playerCommandMu protects the native player li
 
 ### New(...)*App
 
-Injects platform, PlayerFactory, history repository, subtitle-preference repository, and assignment repository. Initializes maps/default styles, volume=100, and startup status. Does not create a window/player.
+Injects platform, PlayerFactory, history repository, subtitle-preference repository, and assignment repository, plus an optional FilmstripGenerator. Initializes maps/default styles, volume=100, and startup status. Does not create a window/player.
 
 ### Run() error
 
@@ -1010,6 +1094,29 @@ Returns filename without extension, or “Untitled video” when basename is emp
 
 Returns uppercase extension plus “ VIDEO”, or “VIDEO” if no extension. The current queue view builds metadata inline.
 
+## internal/presentation/mygo/filmstrip.go
+
+### Filmstrip lifecycle and generation
+
+- filmstripToggleButton(c) and toggleFilmstrip(): show/hide the strip and update the fullscreen controller.
+- ensureFilmstripGeneration(): starts cancellable background generation, prefers the frame nearest the preview/playhead position, and sends progressive snapshots through Window.Update.
+- resetFilmstripForMedia(), closeFilmstrip(), and abandonFilmstripAfterShutdown(): cancel work, invalidate callback tokens, reset media state, and release/drop bitmap cache state at the appropriate lifecycle point.
+- releaseFilmstripBitmaps(): releases decoded bitmap pixels and clears the bounded cache.
+- requestVisibleFilmstripBitmaps(frames) and evictFilmstripBitmaps(keep): load visible completed JPEGs and evict images outside the retained set.
+- filmstripView(c): renders the timeline row, pending placeholders, progress/error state, selected border, and Previous / Next controls.
+- seekToFilmstripPreview(): commits the selected preview position to the player.
+
+### Browsing and selection helpers
+
+- visibleFilmstripFrames(), filmstripWindowStart(...), and filmstripFramesAtStart(...): calculate the current fixed-size window.
+- filmstripShiftWindowStart(...) and shiftFilmstripWindow(...): move the visible range by three frames per step.
+- filmstripWheelSteps(...): handles mouse-wheel steps and accumulates precise touchpad deltas.
+- filmstripFrameIndexAtRatio(...) and filmstripFrameIndexAtX(...): map pointer positions to actual tile indexes while accounting for tile gaps.
+- filmstripSelectedIndex(...), filmstripFrameIndexForPosition(...), and nearestFilmstripFrame(...): derive global selection and nearest-frame behavior.
+- clampPlaybackPosition(...): bound preview positions to the source duration.
+
+The UI uses stable manifest indexes, so a pending tile does not move when its JPEG finishes. Preview/drag state does not issue MPV seeks continuously; the final action commits one seek.
+
 ## internal/presentation/mygo/volume_osd.go
 
 ### Constants
@@ -1126,7 +1233,7 @@ Maps a caller-selected sample metric to Unicode bar heights. Empty input returns
 
 Writes samples into a timestamped CSV under the diagnostics cache folder. Includes process/runtime/thumbnail/playlist/subtitle/history metrics, flushes/closes, deletes a failed partial file, and updates export status.
 
-# 8. Tests
+# 9. Tests
 
 This section names every test function and the rule it protects.
 
@@ -1182,9 +1289,30 @@ This section names every test function and the rule it protects.
 - TestResizeThumbnailPNGLeavesSmallImageUnchanged: small PNG bytes are unchanged.
 - TestResizeThumbnailPNGRejectsInvalidInput: invalid PNG and non-positive target limit rejected.
 
-Persistence tests use temp directories. Thumbnail tests do not start MPV. Native Win32 and actual playback behavior require separate Windows integration testing.
+## internal/adapters/ffmpeg/filmstrip_test.go
 
-# 9. Non-Go tracked files
+- TestSampleIntervalSecondsBoundsFilmstripDensity and TestSampleFrameCountNeverExceedsTarget: keep sampling interval and total frame count bounded.
+- TestVideoFilterBoundsOutputDimensions: fixes output geometry at 160×90.
+- TestFFmpegFrameArgsUseInputSeekBeforeSource: ensures the fast input-seek argument order.
+- TestCacheKeyChangesWhenSourceFingerprintChanges and TestLoadCachedFilmstripValidatesEveryImage: check fingerprint invalidation and manifest/image integrity.
+- TestPrioritizedSampleOrderStartsNearPreferredPosition and TestPrioritizedSampleOrderUsesActualTimestampDistance: verify nearest-time-first ordering.
+- TestRunBoundedJobsNeverExceedsTwoWorkers: verifies the worker concurrency ceiling.
+
+## internal/adapters/ffmpeg/process_windows_test.go
+
+- TestConfigureFFmpegCommandHidesConsoleWindow: asserts both HideWindow and CREATE_NO_WINDOW are set for Windows FFmpeg processes.
+
+## internal/presentation/mygo/filmstrip_test.go
+
+- TestNearestFilmstripFrame, TestVisibleFilmstripFramesCentersAroundPreview, TestFilmstripWindowStartCentersOnPreview, and TestFilmstripFramesAtStartClampsWindow: validate the visible frame window and nearest-frame logic.
+- TestFilmstripSelectedIndexUsesPersistentManifestIndex, TestFilmstripSelectionPersistsAcrossNextWindow, and related selection tests: keep highlighting tied to the global manifest index.
+- TestFilmstripFrameIndexAtXUsesActualTileGaps, TestFilmstripShiftWindowStart, and TestFilmstripWheelSteps: cover pointer hit testing and browsing.
+- TestProgressiveFilmstripKeepsPendingSlotsInTheirTimelinePositions: pending slots remain stable as generated paths arrive.
+- TestCloseFilmstripDiscardsIncompleteProgressiveManifest: closing during generation clears partial paths and allows a clean retry.
+
+Persistence tests use temp directories. Adapter tests use pure helper/process-configuration logic rather than an installed FFmpeg media workload. Native Win32, actual codec behavior, and playback integration still require Windows smoke testing.
+
+# 10. Non-Go tracked files
 
 | Path | Purpose |
 |---|---|
@@ -1193,9 +1321,9 @@ Persistence tests use temp directories. Thumbnail tests do not start MPV. Native
 | DESIGN_SYSTEM.md | Palette, layout measurements, visual rules, and design implementation notes |
 | go.mod | Module name, Go version, MyGo tool dependency, direct/indirect modules |
 | go.sum | Dependency checksums |
-| mygo.json | App name, identifier, version, build output, bundled DLLs, executable icon |
+| mygo.json | App name, identifier, version, build output, bundled MPV DLL/FFmpeg resources, executable icon |
 | makefile | build_windows convenience target |
-| .gitattributes | Git LFS rules for MPV DLLs |
+| .gitattributes | Git LFS rules for MPV DLLs and FFmpeg executable |
 | .gitignore | Excludes build/, .mygo/, and generated MyGo Windows resource file |
 | LICENSE | MIT license |
 | resources/embed.go | Embeds resources/icon.png as resources.IconPNG |
@@ -1206,3 +1334,8 @@ Persistence tests use temp directories. Thumbnail tests do not start MPV. Native
 | third_party/mpv/README.md | Documents required MPV runtime files |
 | third_party/mpv/libmpv-2.dll | Git LFS-managed MPV binary object |
 | third_party/mpv/d3dcompiler_43.dll | Git LFS-managed D3D compiler binary object |
+| scripts/setup-ffmpeg.ps1 | Downloads and SHA-256-verifies the Windows FFmpeg archive, installs ffmpeg.exe, and preserves license/readme files |
+| third_party/ffmpeg/README.md | FFmpeg runtime setup, Git LFS, and licensing notes |
+| third_party/ffmpeg/BUILD-INFO.txt | Source release, asset name, archive hash, and build variant provenance |
+| third_party/ffmpeg/ffmpeg.exe | Git LFS-managed FFmpeg runtime used for filmstrip extraction |
+| third_party/ffmpeg/licenses/ | License and readme materials from the selected FFmpeg build |

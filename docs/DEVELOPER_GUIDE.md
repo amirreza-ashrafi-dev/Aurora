@@ -6,7 +6,7 @@ This is the onboarding guide for developers new to Aurora. It explains the appli
 
 Aurora Player is a Windows desktop video player written in Go. MyGo provides the desktop windows and UI, libmpv performs playback, and a Win32 adapter creates the native child window that displays video inside the MyGo main window.
 
-The application has a local playlist, normal and fullscreen playback controls, a windowed Cinematic Mode, playback history with Smart Resume, external subtitle tools, queue thumbnails, and a memory diagnostics window.
+The application has a local playlist, normal and fullscreen playback controls, a windowed Cinematic Mode, playback history with Smart Resume, external subtitle tools, queue artwork thumbnails, an on-demand timeline filmstrip, and a memory diagnostics window.
 
 There is no HTTP server, REST endpoint, remote service, cloud sync, or database in the current source tree. Persistent data is stored in local JSON files. “API” in this project normally means a Go interface between packages, the libmpv C API, or a Win32 function—not a web endpoint.
 
@@ -19,6 +19,7 @@ Playback is Windows-only. Non-Windows files are compile-time stubs so package bu
 | Go 1.27.3 | Main language/runtime as declared in go.mod |
 | MyGo v0.9.2 | Desktop windows, UI layout, event handling, and dialogs |
 | libmpv | Playback, playlist commands, media properties, screenshots, subtitles |
+| FFmpeg | Optional background extraction of compressed timeline preview frames |
 | purego v0.11.1 | Binding native DLL functions to Go functions |
 | golang.org/x/sys/windows | Windows DLL loading, handles, strings, and system helpers |
 | Win32 | Child video window, geometry, DPI, cursor, drag-and-drop, input messages |
@@ -32,20 +33,25 @@ Aurora targets 64-bit Windows 11. The MPV adapter requires two runtime DLLs:
 
 Both are tracked by Git LFS. Without downloading LFS objects, a checkout can contain small pointer files rather than runnable DLLs. These files are runtime dependencies, not Go modules, so go mod download does not fetch them.
 
+The optional filmstrip generator also uses `third_party/ffmpeg/ffmpeg.exe`, which is bundled as a MyGo resource and tracked by Git LFS. FFmpeg is not required for normal libmpv playback. If it cannot be found, thumbnail extraction fails with a filmstrip-specific error while the rest of the player remains usable.
+
 ## 3. Clone, test, build
 
 ~~~powershell
 git clone https://github.com/amirreza-ashrafi-dev/Aurora.git
 cd Aurora
+git lfs install
 git lfs pull
 go mod download
 go test ./...
 go tool mygo build -platform windows/amd64
 ~~~
 
-The makefile also provides make build_windows, which runs the same MyGo Windows amd64 build. Output and packaged resources are configured in mygo.json.
+The makefile also provides `make build_windows`, which runs the same MyGo Windows amd64 build. Output and packaged resources are configured in `mygo.json`. The LFS pull downloads the MPV DLLs and bundled FFmpeg executable.
 
-The unit tests cover application rules, JSON persistence, MPV version parsing, thumbnail processing, and memory-formatting helpers. They do not instantiate a real Win32 video host or exercise an installed libmpv DLL. Always test actual playback on Windows with the real LFS runtime files after changing the native adapter, lifecycle, playlist, or graphics behavior.
+To install or refresh FFmpeg using the repository's verified Windows setup script, run `.\scripts\setup-ffmpeg.ps1` from PowerShell. Add `-Force` to replace an existing executable. The script verifies the downloaded archive checksum and retains the included license/readme materials.
+
+The unit tests cover application rules, JSON persistence, MPV version parsing, queue-thumbnail processing, filmstrip sampling/cache behavior, progressive filmstrip UI state, and memory-formatting helpers. They do not instantiate a real Win32 video host or exercise an installed libmpv DLL or real FFmpeg media decoding. Always test actual playback and filmstrip extraction on Windows with the real LFS runtime files after changing native adapters, media lifecycle, caching, or graphics behavior.
 
 Both main.go and cmd/aurora/main.go are small wrappers around bootstrap.Run. Keep application logic out of these entrypoints.
 
@@ -66,6 +72,7 @@ Both main.go and cmd/aurora/main.go are small wrappers around bootstrap.Run. Kee
 │   ├── application/
 │   ├── adapters/
 │   │   ├── mpv/
+│   │   ├── ffmpeg/
 │   │   ├── history/
 │   │   └── subtitles/
 │   ├── platform/windows/
@@ -73,7 +80,11 @@ Both main.go and cmd/aurora/main.go are small wrappers around bootstrap.Run. Kee
 │   │   └── assets/
 │   └── bootstrap/
 ├── resources/
-└── third_party/mpv/
+├── scripts/
+│   └── setup-ffmpeg.ps1
+└── third_party/
+    ├── mpv/
+    └── ffmpeg/
 ~~~
 
 | Package | Responsibility |
@@ -81,6 +92,7 @@ Both main.go and cmd/aurora/main.go are small wrappers around bootstrap.Run. Kee
 | internal/domain | UI- and backend-neutral data types |
 | internal/application | Required interfaces and reusable business rules |
 | internal/adapters/mpv | libmpv playback and subtitle implementation |
+| internal/adapters/ffmpeg | Optional, bounded FFmpeg extraction and disk cache for filmstrip frames |
 | internal/adapters/history | Playback history JSON repository |
 | internal/adapters/subtitles | Subtitle preferences and assignment JSON repository |
 | internal/platform/windows | Native Win32 child window and input operations |
@@ -88,6 +100,8 @@ Both main.go and cmd/aurora/main.go are small wrappers around bootstrap.Run. Kee
 | internal/bootstrap | Creates real implementations and injects them |
 | resources | Embedded application icon |
 | third_party/mpv | Native MPV and D3D compiler runtime files |
+| third_party/ffmpeg | FFmpeg executable, build provenance, and license materials |
+| scripts | Verified FFmpeg setup/update script |
 
 The MyGo views are split into feature-oriented files but stay in one Go package. They share App state and the MyGo UI lifecycle. Splitting them into many packages would create artificial coupling and risk circular imports.
 
@@ -100,11 +114,13 @@ flowchart TD
     Entry["main.go / cmd/aurora"] --> Boot["internal/bootstrap"]
     Boot --> Presentation["presentation/mygo"]
     Boot --> MPV["adapters/mpv"]
+    Boot --> FFmpeg["adapters/ffmpeg"]
     Boot --> History["adapters/history"]
     Boot --> Subs["adapters/subtitles"]
     Boot --> Win["platform/windows"]
     Presentation --> AppPorts["application contracts and rules"]
     MPV --> AppPorts
+    FFmpeg --> AppPorts
     History --> AppPorts
     Subs --> AppPorts
     Win --> AppPorts
@@ -121,6 +137,7 @@ Key contracts in internal/application/ports.go:
 - PlayerFactory: create a Player after the native video HWND exists.
 - SubtitlePlayer: optional subtitle operations kept separate from the general playback contract.
 - SubtitlePreferencesRepository and SubtitleAssignmentRepository: read and write subtitle settings.
+- FilmstripGenerator: create or reuse a disk-cached filmstrip while honoring cancellation; the UI depends on this port, not on FFmpeg command details.
 
 ## 6. Startup and shutdown
 
@@ -130,11 +147,12 @@ Key contracts in internal/application/ports.go:
 2. bootstrap creates the Windows Platform.
 3. It creates a lazy PlayerFactory. The factory finds the packaged MPV DLL path and calls mpv.New with a video HWND when requested.
 4. It creates the history and subtitle JSON repositories under the user's configuration directory.
-5. It constructs presentation.App with the platform, player factory, and repositories.
-6. App.Run starts MyGo and registers onReady.
-7. onReady creates the MyGo main window and hidden STATIC Win32 child window, then installs double-click, file-drop, and mouse-wheel handlers.
-8. History, subtitle assignments, and subtitle preferences are loaded.
-9. libmpv is deliberately not initialized yet. It is created by ensurePlayer when the first valid video is added.
+5. It resolves MyGo's resources directory, creates the FFmpeg FilmstripGenerator, and injects it with the other application dependencies.
+6. It constructs presentation.App with the platform, player factory, repositories, and filmstrip generator.
+7. App.Run starts MyGo and registers onReady.
+8. onReady creates the MyGo main window and hidden STATIC Win32 child window, then installs double-click, file-drop, and mouse-wheel handlers.
+9. History, subtitle assignments, and subtitle preferences are loaded.
+10. libmpv is deliberately not initialized yet. It is created by ensurePlayer when the first valid video is added; FFmpeg is launched only when filmstrip generation is requested.
 
 ~~~mermaid
 sequenceDiagram
@@ -143,9 +161,11 @@ sequenceDiagram
     participant App as presentation.App
     participant Win as Windows Platform
     participant MPV as libmpv adapter
+    participant FFmpeg as FFmpeg adapter
     Entry->>Bootstrap: Run()
     Bootstrap->>Win: New()
-    Bootstrap->>App: New(platform, factory, repositories)
+    Bootstrap->>FFmpeg: NewFilmstripGenerator(resourcesDir)
+    Bootstrap->>App: New(platform, factory, repositories, filmstripGenerator)
     Bootstrap->>App: Run()
     App->>App: onReady()
     App->>Win: CreateVideoHost(main HWND)
@@ -156,7 +176,7 @@ sequenceDiagram
     MPV-->>App: Player attached to child HWND
 ~~~
 
-Lazy initialization means an empty Aurora window does not load MPV's decoder and video renderer.
+Lazy initialization means an empty Aurora window does not load MPV's decoder and video renderer. FFmpeg is also lazy: no child process starts until the user opens the timeline filmstrip and a cache miss requires extraction.
 
 ### Shutdown
 
@@ -173,7 +193,8 @@ All persistent data is local. The exact root is provided by the operating system
 | Playback history | Config/Aurora Player/playback_history.json | Recent position and duration by media path |
 | Subtitle styles | Config/Aurora Player/subtitle_preferences.json | Global and language-specific appearance |
 | Subtitle assignments | Config/Aurora Player/subtitle_assignments.json | External subtitle path/language/visibility per video |
-| Queue thumbnails | Cache/Aurora Player/thumbnails/ | PNG cache keyed by a SHA-256 of the cleaned media path |
+| Queue thumbnails | Cache/Aurora Player/thumbnails/ | MPV screenshots resized to PNG and keyed by media path |
+| Timeline filmstrip | Cache/Aurora Player/filmstrip/ | Fingerprinted directories containing compressed JPEG frames and a manifest; best-effort 512 MiB LRU budget |
 | Memory samples | Cache/Aurora Player/diagnostics/ | Timestamped CSV export |
 
 History is limited to 500 entries and 1 MiB. Subtitle assignments are limited to 500 entries; both subtitle JSON files have a 1 MiB file limit. JSON writes use a temporary file in the destination directory and rename it after the new file is written and flushed. Media files are not copied into Aurora's config directory; the app persists their paths.
@@ -234,11 +255,23 @@ Fullscreen is MyGo's native fullscreen state. Cinematic Mode is Aurora's custom 
 
 Both share a separate floating controller so controls can appear above the native MPV child. A fullscreen header and Smart Resume banner are also separate flyouts. A controller monitor checks pointer position every 50 ms, shows overlays on movement or hover, and hides them after three seconds of inactivity. Native ShowCursor changes are balanced by recording exactly how many decrements Aurora performed.
 
-### Thumbnails
+### Queue thumbnails
 
 After at least 1.5 seconds of playback, the app requests a video screenshot through the MPV adapter. The screenshot is written to a stable cache file derived from the media path, resized so the longest edge is no more than 320 pixels, and decoded into a MyGo bitmap on the UI thread.
 
 Capture tokens prevent old asynchronous results from restoring thumbnails for removed items. A read lock keeps the player alive during the native screenshot call. When a queue item is removed and no matching path remains, the app invalidates the token, releases bitmap pixels, and deletes the tracked map entries. The PNG on disk is only a cache and can be regenerated.
+
+### Timeline thumbnail filmstrip
+
+The timeline filmstrip is separate from queue artwork thumbnails. It is opened on demand from the playback controls and shows a small sliding window of up to nine frames from a manifest of up to 48 time-spaced samples. Previous / Next buttons move the visible window by three frames; mouse-wheel browsing does the same, while precise touchpad deltas accumulate until they reach a wheel-step threshold.
+
+The FFmpeg adapter writes 160×90 JPEGs into a cache directory identified by the source path, file size, modification time, duration, and output-format version. Samples closest to the current preview/playhead position are generated first. Up to two FFmpeg child processes run concurrently, with each process limited to one decoding thread and one filter thread. On Windows, the child processes are created with hidden/no-console flags so they do not open terminal windows.
+
+The UI starts with stable frame slots; a slot shows a pending placeholder until its JPEG has been generated. Every completed image is reported to the presentation through a UI-thread update. Only visible completed frames are decoded; the presentation retains at most twelve decoded bitmaps and releases their CPU pixels on eviction or close.
+
+Preview position is independent from committed playback position. Hovering, browsing, and dragging the filmstrip do not continuously seek MPV. Releasing a drag or choosing a frame commits one precise seek; canceling a drag restores the committed position. Generation is canceled when the media changes, the strip closes, or the app shuts down, and stale callbacks are rejected by a generation token and media-path check.
+
+A cache manifest is published only after every frame succeeds. It is written to a temporary file and renamed into place; failed or canceled generation removes the incomplete directory. A valid cache can therefore be reused on the next open without decoding the source video again. FFmpeg is optional for playback: if the executable is missing, the filmstrip reports the error but regular libmpv playback still works.
 
 ### Memory diagnostics
 
@@ -253,7 +286,8 @@ Windows metrics use GetCurrentProcess and GetProcessMemoryInfo. Non-Windows buil
 | Playback polling | Reads MPV properties on a timer | Window.Update applies results |
 | Progress writer | Serializes repository writes/deletes | No UI mutation is needed |
 | File dialogs | Waits for user selection | Window.Update applies paths |
-| Thumbnail capture | Calls MPV screenshot and resizes PNG | Window.Update checks token/queue, creates bitmap |
+| Queue thumbnail capture | Calls MPV screenshot and resizes PNG | Window.Update checks token/queue, creates bitmap |
+| Filmstrip generation | Runs at most two FFmpeg child processes, writes JPEG frames, reports progress | Window.Update checks generation token/media path and updates stable frame slots; visible frames are decoded on the UI thread |
 | Controller monitor | Samples pointer and timers | RunOnMain updates MyGo windows/cursor |
 | Memory sampler | Ticks every second | Window.Update records/displays sample |
 | Explicit GC | Calls runtime.GC | Window.Update records after-GC sample |
@@ -266,6 +300,9 @@ Follow these rules when changing the code:
 - That lock does not make every App field safe for arbitrary goroutine access. Keep presentation state on the UI thread unless a field has explicit synchronization.
 - Remove Win32 subclass callbacks before destroying the HWND or releasing the DLL that owns them.
 - Release bitmap pixels and drop all app-owned map references when a queue thumbnail is evicted.
+- Keep FFmpeg work off the UI thread; use context cancellation and generation tokens to reject stale results after media changes or filmstrip close.
+- Keep filmstrip timeline slots stable while progressive frames arrive. Decode only visible files, keep the bitmap cache bounded to twelve entries, and release pixels on the UI thread.
+- Keep the FFmpeg worker pool bounded to two processes and each process to one decoder/filter thread. Windows child processes must use hidden/no-console creation flags.
 - Treat the Go playlist and MPV playlist as one logical state change.
 
 ## 10. Where to change things
@@ -284,7 +321,10 @@ Follow these rules when changing the code:
 | Change MPV options/native calls | adapters/mpv/player_windows.go | HWND lifecycle and player teardown |
 | Change fullscreen/controller | fullscreen.go and fullscreen_view.go | playback.go, cursor.go, volume_osd.go |
 | Change visual tokens/buttons | theme.go and DESIGN_SYSTEM.md | main_view.go and flyout views |
-| Change thumbnail cache/size | thumbnail.go | polling.go, playlist.go and thumbnail tests |
+| Change queue-thumbnail cache/size | thumbnail.go | polling.go, playlist.go and thumbnail tests |
+| Change timeline filmstrip generation/cache | adapters/ffmpeg/filmstrip.go | domain/filmstrip.go, application/ports.go, bootstrap/run.go and filmstrip adapter tests |
+| Change filmstrip UI, scrubbing, browsing, or bitmap lifetime | presentation/mygo/filmstrip.go | app.go, playback.go, lifecycle.go and filmstrip presentation tests |
+| Change FFmpeg Windows process visibility | adapters/ffmpeg/process_windows.go | process_windows_test.go and filmstrip.go |
 | Change memory metrics | memory_monitor.go and memory_metrics_windows.go | app.go, lifecycle.go, memory tests |
 | Change packaging/resources | mygo.json, go.mod, makefile | .gitattributes and third_party/mpv |
 
@@ -316,9 +356,9 @@ Keep the view declarative. Read App state and call a focused App method from Cli
 |---|---|
 | go.mod | Module path, Go version, MyGo tool dependency, direct/indirect Go modules |
 | go.sum | Dependency checksums |
-| mygo.json | App name/identifier/version, build output, bundled DLL resources, executable icon |
+| mygo.json | App name/identifier/version, build output, bundled MPV DLL and FFmpeg resources, executable icon |
 | makefile | build_windows convenience target |
-| .gitattributes | Git LFS rules for the MPV DLLs |
+| .gitattributes | Git LFS rules for the MPV DLLs and FFmpeg executable |
 | .gitignore | Excludes build/, .mygo/, generated Windows resource object |
 | LICENSE | MIT license |
 | resources/embed.go | Embeds resources/icon.png as resources.IconPNG |
@@ -328,18 +368,23 @@ Keep the view declarative. Read App state and call a focused App method from Cli
 | internal/presentation/mygo/assets/logo.png | Embedded in brand.go for visible Aurora branding |
 | third_party/mpv/README.md | Describes required native runtime files |
 | third_party/mpv/*.dll | Git LFS-managed MPV and D3D compiler binaries |
+| third_party/ffmpeg/ffmpeg.exe | Git LFS-managed Windows FFmpeg executable used only for timeline thumbnails |
+| third_party/ffmpeg/README.md and licenses/ | FFmpeg installation, build provenance, and license materials |
+| scripts/setup-ffmpeg.ps1 | Downloads, checksum-verifies, and installs the configured Windows FFmpeg build |
 
 icon.png, icon-dev.png, and the presentation logo currently have the same Git blob. resources/aurora.png is a separate tracked image. The Go embed declaration references icon.png, not aurora.png.
 
 ## 12. Known constraints
 
 - The actual native video host and libmpv implementation are Windows-only.
-- A normal checkout must fetch Git LFS objects before the bundled MPV DLLs can be used.
+- A normal checkout must fetch Git LFS objects before the bundled MPV DLLs and FFmpeg executable can be used. FFmpeg is optional for ordinary playback but required for the filmstrip.
 - There is no HTTP API, server, database, account system, or cloud sync.
 - Playback history and subtitle settings use local JSON; schema changes need explicit compatibility handling.
 - Subtitle presentation persists external paths, language, and disabled state, not embedded-track selection.
 - ASS/SSA and image-based subtitle formats may not honor all appearance options.
 - Memory diagnostics reports whole-process counters and Go runtime counters; it cannot identify MPV-only or GPU-driver-only memory.
+- Filmstrip extraction is CPU- and storage-intensive on a cache miss. The implementation caps concurrency at two FFmpeg processes and bounds the decoded UI bitmap cache; no benchmark promise is made for every codec, storage device, or 4K source.
+- The FFmpeg archive name says LGPL, but that label alone does not establish redistribution compliance. Review the exact build configuration and all applicable license obligations before shipping the binary.
 - Runtime video-output release is selected using the reported mpv-version. The version parser test does not prove native reconfiguration behavior for every MPV build; the adapter has a full-context teardown fallback for older builds.
 - DESIGN_SYSTEM.md includes estimates and reference measurements and marks which values have not been verified as Figma variables.
 
@@ -349,6 +394,8 @@ icon.png, icon-dev.png, and the presentation logo currently have the same Git bl
 |---|---|
 | internal/adapters/history/json_test.go | Round-trip/delete, 500-record cap, unsupported version, versioned envelope |
 | internal/adapters/mpv/version_test.go | Runtime video-output version parsing |
+| internal/adapters/ffmpeg/filmstrip_test.go | Sampling interval/density, frame arguments, cache validation/fingerprinting, priority order, and two-worker bound |
+| internal/adapters/ffmpeg/process_windows_test.go | Windows FFmpeg process uses hidden/no-console creation flags |
 | internal/adapters/subtitles/json_test.go | Preference and assignment persistence/deletion |
 | internal/application/playback_test.go | Seek and volume clamping |
 | internal/application/playlist_test.go | File validation, duplicate detection, queue-index behavior |
@@ -356,12 +403,15 @@ icon.png, icon-dev.png, and the presentation logo currently have the same Git bl
 | internal/application/subtitles_test.go | Language normalization/profile fallback, strict matching, language extraction, extensions |
 | internal/presentation/mygo/memory_monitor_test.go | MiB formatting and sparkline output |
 | internal/presentation/mygo/thumbnail_test.go | Case-insensitive path matching, eviction, PNG resizing, invalid image input |
+| internal/presentation/mygo/filmstrip_test.go | Visible-window math, stable selection, wheel browsing, progressive pending slots, and canceled-generation cleanup |
+| internal/presentation/mygo/timeline_test.go | Timeline preview/commit/cancel behavior and single-seek semantics |
 
 The tests capture business rules and edge cases, but native playback, Win32 input, actual DLL loading, and GPU resource behavior still need Windows integration testing.
 
 ## 14. Further reading
 
 - [Source Reference](SOURCE_REFERENCE.md) — file-by-file and declaration-by-declaration catalogue.
+- [Timeline Filmstrip](THUMBNAIL_FILMSTRIP.md) — detailed extraction, cache, scrubbing, performance, and FFmpeg runtime notes.
 - [Architecture](../ARCHITECTURE.md) — compact dependency-boundary explanation.
 - [Design System](../DESIGN_SYSTEM.md) — visual tokens, dimensions, and UI rules.
 - [README](../README.md) — user-facing feature overview and build information.

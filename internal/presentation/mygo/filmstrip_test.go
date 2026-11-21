@@ -138,8 +138,23 @@ func TestFilmstripSelectedIndexFallsBackToPlaybackOnlyWithoutExplicitSelection(t
 	for i := range frames {
 		frames[i].At = time.Duration(i) * time.Second
 	}
-	if got := filmstripSelectedIndex(frames, 0, 0, false, 8.1); got != 8 {
-		t.Fatalf("playback fallback selection = %d, want 8", got)
+
+	tests := []struct {
+		name     string
+		position float64
+		want     int
+	}{
+		{name: "inside final sample interval", position: 8.1, want: 8},
+		{name: "at final sample", position: 8, want: 8},
+		{name: "outside final sample interval", position: 8.6, want: -1},
+		{name: "before first sample interval", position: -0.6, want: -1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := filmstripSelectedIndex(frames, 0, 0, false, test.position); got != test.want {
+				t.Fatalf("playback fallback selection at %.2fs = %d, want %d", test.position, got, test.want)
+			}
+		})
 	}
 }
 

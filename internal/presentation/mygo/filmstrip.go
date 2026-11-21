@@ -701,21 +701,49 @@ func (a *App) filmstripView(c *ui.Context) {
 // filmstripFrameIndexForPosition returns the selected tile in the current
 // window, or -1 when the retained preview position is outside that window.
 func filmstripFrameIndexForPosition(frames []domain.FilmstripFrame, positionSeconds float64) int {
-	if len(frames) == 0 {
+	if len(frames) == 0 || math.IsNaN(positionSeconds) || math.IsInf(positionSeconds, 0) {
 		return -1
 	}
-	first := frames[0].At.Seconds()
-	last := frames[len(frames)-1].At.Seconds()
-	if positionSeconds < first || positionSeconds > last {
-		return -1
-	}
+
 	selected := nearestFilmstripFrame(frames, positionSeconds)
+	selectedIndex := -1
 	for i := range frames {
 		if frames[i].At == selected.At {
-			return i
+			selectedIndex = i
+			break
 		}
 	}
-	return -1
+	if selectedIndex < 0 {
+		return -1
+	}
+
+	target := time.Duration(math.Max(0, positionSeconds) * float64(time.Second))
+	distance := absDuration(selected.At - target)
+
+	// A sampled frame represents the interval halfway to its neighbors.
+	// Allow that half-interval beyond the first/last sample, since the video
+	// duration usually extends beyond the timestamp of the final thumbnail.
+	// Still return no selection when the preview is farther away than the
+	// selected frame's nearest sampling boundary.
+	var nearestGap time.Duration
+	switch {
+	case len(frames) == 1:
+		// With a single thumbnail there is no neighbor from which to infer
+		// its interval, so only highlight it at its own timestamp.
+		return map[bool]int{true: selectedIndex, false: -1}[distance == 0]
+	case selectedIndex == 0:
+		nearestGap = absDuration(frames[1].At - frames[0].At)
+	case selectedIndex == len(frames)-1:
+		nearestGap = absDuration(frames[selectedIndex].At - frames[selectedIndex-1].At)
+	default:
+		before := absDuration(frames[selectedIndex].At - frames[selectedIndex-1].At)
+		after := absDuration(frames[selectedIndex+1].At - frames[selectedIndex].At)
+		nearestGap = min(before, after)
+	}
+	if distance > nearestGap/2 {
+		return -1
+	}
+	return selectedIndex
 }
 
 // filmstripSelectedIndex resolves the persistent manifest-frame selection

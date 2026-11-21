@@ -11,11 +11,27 @@ permissions:
 
 jobs:
   test:
-    name: Go tests and vet
+    name: Go tests, vet, and Windows package
     runs-on: windows-latest
     steps:
-      - name: Check out source
+      - name: Check out source and Git LFS assets
         uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Verify FFmpeg LFS object
+        shell: pwsh
+        run: |
+          $ffmpeg = "third_party/ffmpeg/ffmpeg.exe"
+          if (-not (Test-Path -LiteralPath $ffmpeg -PathType Leaf)) {
+            throw "FFmpeg was not checked out. Check the Git LFS object upload."
+          }
+          $actualHash = (Get-FileHash -LiteralPath $ffmpeg -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expectedHash = "93fb4a9e9141ad0f33801cda4c36ae16c06451d2533397930c4cfbebac6a20cd"
+          if ($actualHash -ne $expectedHash) {
+            throw "FFmpeg LFS object hash mismatch. Expected $expectedHash, received $actualHash."
+          }
+          Write-Host "FFmpeg LFS object verified: $actualHash"
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -28,3 +44,6 @@ jobs:
 
       - name: Run vet
         run: go vet ./...
+
+      - name: Build Windows package
+        run: go tool mygo build -platform windows/amd64

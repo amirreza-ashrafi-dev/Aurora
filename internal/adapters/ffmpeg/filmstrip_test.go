@@ -1,9 +1,11 @@
 package ffmpeg
 
 import (
-	"os"
+	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -143,5 +145,54 @@ func writeManifest(t *testing.T, dir string, manifest diskManifest) {
 	}
 	if err := os.WriteFile(filepath.Join(dir, manifestName), data, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPrioritizedSampleOrderStartsNearPreferredPosition(t *testing.T) {
+	got := prioritizedSampleOrder(10, 10*time.Second, 43*time.Second)
+	if len(got) != 10 {
+		t.Fatalf("sample order length = %d, want 10", len(got))
+	}
+	if got[0] != 4 || got[1] != 5 {
+		t.Fatalf("first samples = %v, want nearest indexes [4 5]", got[:2])
+	}
+}
+
+func TestRunBoundedJobsNeverExceedsTwoWorkers(t *testing.T) {
+	jobs := []int{0, 1, 2, 3, 4, 5, 6, 7}
+	var active atomic.Int32
+	var peak atomic.Int32
+	completed := make([]int, 0, len(jobs))
+
+	err := runBoundedJobs(context.Background(), jobs, maxConcurrentFFmpeg,
+		func(ctx context.Context, _ int) error {
+			current := active.Add(1)
+			for {
+				old := peak.Load()
+				if current <= old || peak.CompareAndSwap(old, current) {
+					break
+				}
+			}
+			select {
+			case <-time.After(20 * time.Millisecond):
+				active.Add(-1)
+				return nil
+			case <-ctx.Done():
+				active.Add(-1)
+				return ctx.Err()
+			}
+		},
+		func(index, _ int) {
+			completed = append(completed, index)
+		},
+	)
+	if err != nil {
+		t.Fatalf("runBoundedJobs() error = %v", err)
+	}
+	if peak.Load() != 2 {
+		t.Fatalf("peak concurrent workers = %d, want 2", peak.Load())
+	}
+	if len(completed) != len(jobs) {
+		t.Fatalf("completed jobs = %d, want %d", len(completed), len(jobs))
 	}
 }

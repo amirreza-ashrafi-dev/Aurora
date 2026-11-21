@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"sync"
 	"strings"
 	"time"
 
@@ -25,7 +26,8 @@ const (
 	manifestVersion = 1
 	thumbnailWidth  = 160
 	thumbnailHeight = 90
-	targetFrames    = 48
+	targetFrames         = 48
+	maxConcurrentFFmpeg = 2
 	maxDiskCache    = int64(512 << 20)
 	maxImageBytes   = int64(256 << 10)
 	maxManifestBytes = int64(64 << 10)
@@ -36,9 +38,13 @@ const manifestName = "manifest.json"
 type FilmstripGenerator struct {
 	ffmpegPath string
 	cacheRoot  string
-	// One extraction process at a time. FFmpeg is also limited to one codec
-	// and one filter thread, so thumbnail work cannot fan out uncontrolled.
-	worker chan struct{}
+
+	// Serialize cache publication so two requests cannot write the same
+	// fingerprint directory at the same time.
+	generation chan struct{}
+	// A single filmstrip may use at most two FFmpeg child processes.
+	// Each child is independently limited to one decoder and filter thread.
+	workers chan struct{}
 }
 
 type diskManifest struct {
@@ -76,20 +82,45 @@ func NewFilmstripGeneratorAt(ffmpegPath, cacheRoot string) *FilmstripGenerator {
 	return &FilmstripGenerator{
 		ffmpegPath: ffmpegPath,
 		cacheRoot:  cacheRoot,
-		worker:     make(chan struct{}, 1),
+		generation: make(chan struct{}, 1),
+		workers:    make(chan struct{}, maxConcurrentFFmpeg),
 	}
 }
 
 // Ensure returns a complete disk-cached filmstrip, generating it only when
 // the source fingerprint or thumbnail format changes.
 func (g *FilmstripGenerator) Ensure(ctx context.Context, mediaPath string, duration time.Duration) (domain.Filmstrip, error) {
-	return g.EnsureWithProgress(ctx, mediaPath, duration, nil)
+	return g.EnsureProgressive(ctx, mediaPath, duration, 0, nil)
 }
 
-// EnsureWithProgress builds a cached filmstrip using fast input seeks. Each
-// sample starts one short-lived FFmpeg process, and the worker semaphore keeps
-// the process count at one so random-access sampling stays memory bounded.
-func (g *FilmstripGenerator) EnsureWithProgress(ctx context.Context, mediaPath string, duration time.Duration, progress func(completed, total int)) (domain.Filmstrip, error) {
+// EnsureWithProgress preserves the count-only progress API for callers that do
+// not need partial frame paths.
+func (g *FilmstripGenerator) EnsureWithProgress(
+	ctx context.Context,
+	mediaPath string,
+	duration time.Duration,
+	progress func(completed, total int),
+) (domain.Filmstrip, error) {
+	var update func(domain.Filmstrip, int, int)
+	if progress != nil {
+		update = func(_ domain.Filmstrip, completed, total int) {
+			progress(completed, total)
+		}
+	}
+	return g.EnsureProgressive(ctx, mediaPath, duration, 0, update)
+}
+
+// EnsureProgressive generates thumbnails around the preferred position first,
+// then fills the rest of the filmstrip. Completed JPEGs are written to stable
+// paths and reported immediately; the cache is considered valid only after
+// the complete manifest is atomically published.
+func (g *FilmstripGenerator) EnsureProgressive(
+	ctx context.Context,
+	mediaPath string,
+	duration time.Duration,
+	preferredPosition time.Duration,
+	update func(partial domain.Filmstrip, completed, total int),
+) (domain.Filmstrip, error) {
 	if g == nil {
 		return domain.Filmstrip{}, fmt.Errorf("FFmpeg filmstrip generator is unavailable")
 	}
@@ -125,37 +156,57 @@ func (g *FilmstripGenerator) EnsureWithProgress(ctx context.Context, mediaPath s
 	targetDir := filepath.Join(g.cacheRoot, key)
 	if strip, ok := loadCachedFilmstrip(targetDir, info, duration); ok {
 		touchDirectory(targetDir)
+		if update != nil {
+			update(strip, len(strip.Frames), len(strip.Frames))
+		}
 		return strip, nil
 	}
 
 	select {
-	case g.worker <- struct{}{}:
-		defer func() { <-g.worker }()
+	case g.generation <- struct{}{}:
+		defer func() { <-g.generation }()
 	case <-ctx.Done():
 		return domain.Filmstrip{}, ctx.Err()
-	}
-
-	// Another request may have completed while this call waited for the
-	// single worker.
-	if strip, ok := loadCachedFilmstrip(targetDir, info, duration); ok {
-		touchDirectory(targetDir)
-		return strip, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return domain.Filmstrip{}, err
 	}
+
+	// Another request may have finished while this call waited for the
+	// generator lock.
+	if strip, ok := loadCachedFilmstrip(targetDir, info, duration); ok {
+		touchDirectory(targetDir)
+		if update != nil {
+			update(strip, len(strip.Frames), len(strip.Frames))
+		}
+		return strip, nil
+	}
+
 	if err := os.MkdirAll(g.cacheRoot, 0o700); err != nil {
 		return domain.Filmstrip{}, fmt.Errorf("create filmstrip cache: %w", err)
 	}
-
-	tempDir, err := os.MkdirTemp(g.cacheRoot, ".filmstrip-*")
-	if err != nil {
-		return domain.Filmstrip{}, fmt.Errorf("create temporary filmstrip directory: %w", err)
+	// An invalid or abandoned cache directory has no published manifest.
+	// Remove it before reusing the stable frame paths for this generation.
+	if err := os.RemoveAll(targetDir); err != nil {
+		return domain.Filmstrip{}, fmt.Errorf("remove incomplete filmstrip cache: %w", err)
 	}
-	defer os.RemoveAll(tempDir)
+	if err := os.MkdirAll(targetDir, 0o700); err != nil {
+		return domain.Filmstrip{}, fmt.Errorf("create filmstrip cache directory: %w", err)
+	}
+	published := false
+	defer func() {
+		if !published {
+			_ = os.RemoveAll(targetDir)
+		}
+	}()
 
 	stepSeconds := sampleIntervalSeconds(duration)
+	interval := time.Duration(stepSeconds) * time.Second
 	frameCount := sampleFrameCount(duration, stepSeconds)
+	if frameCount == 0 {
+		return domain.Filmstrip{}, fmt.Errorf("video duration is too short to sample thumbnails")
+	}
+
 	manifest := diskManifest{
 		Version:             manifestVersion,
 		SourceSize:          info.Size(),
@@ -164,83 +215,263 @@ func (g *FilmstripGenerator) EnsureWithProgress(ctx context.Context, mediaPath s
 		IntervalSeconds:     stepSeconds,
 		Width:               thumbnailWidth,
 		Height:              thumbnailHeight,
-		Frames:              make([]diskFrame, 0, frameCount),
+		Frames:              make([]diskFrame, frameCount),
+	}
+	partialFrames := make([]domain.FilmstripFrame, frameCount)
+	for index := range partialFrames {
+		at := time.Duration(int64(index)*stepSeconds) * time.Second
+		partialFrames[index] = domain.FilmstripFrame{At: at}
+	}
+	if update != nil {
+		update(domain.Filmstrip{
+			Duration: duration,
+			Interval: interval,
+			Frames:   append([]domain.FilmstripFrame(nil), partialFrames...),
+		}, 0, frameCount)
 	}
 
-	for index := 0; index < frameCount; index++ {
-		if err := ctx.Err(); err != nil {
-			return domain.Filmstrip{}, err
-		}
-		at := time.Duration(int64(index)*stepSeconds) * time.Second
-		if at >= duration {
-			break
-		}
+	// Generate the frames nearest the current playhead first, so the part of
+	// the filmstrip the user is most likely to inspect appears first.
+	preferredPosition = clampDuration(preferredPosition, duration)
+	jobs := prioritizedSampleOrder(frameCount, interval, preferredPosition)
 
-		outputPath := filepath.Join(tempDir, fmt.Sprintf("frame_%03d.jpg", index))
+	var partialMu sync.RWMutex
+	err = runBoundedJobs(ctx, jobs, maxConcurrentFFmpeg, func(workerCtx context.Context, index int) error {
+		at := time.Duration(int64(index)*stepSeconds) * time.Second
+		outputPath := filepath.Join(targetDir, fmt.Sprintf("frame_%03d.jpg", index))
+
+		select {
+		case g.workers <- struct{}{}:
+		case <-workerCtx.Done():
+			return workerCtx.Err()
+		}
+		defer func() { <-g.workers }()
+
 		args := ffmpegFrameArgs(absolutePath, outputPath, at)
-		cmd := exec.CommandContext(ctx, g.ffmpegPath, args...)
+		cmd := exec.CommandContext(workerCtx, g.ffmpegPath, args...)
 		cmd.Stdout = io.Discard
 		stderr := &limitedBuffer{limit: 16 << 10}
 		cmd.Stderr = stderr
 		if err := cmd.Run(); err != nil {
-			if ctx.Err() != nil {
-				return domain.Filmstrip{}, ctx.Err()
+			if workerCtx.Err() != nil {
+				return workerCtx.Err()
 			}
 			detail := strings.TrimSpace(stderr.String())
 			if detail == "" {
 				detail = err.Error()
 			}
-			return domain.Filmstrip{}, fmt.Errorf("FFmpeg thumbnail %d/%d at %s failed: %s",
+			return fmt.Errorf("FFmpeg thumbnail %d/%d at %s failed: %s",
 				index+1, frameCount, formatSeekTimestamp(at), detail)
 		}
 
 		frameInfo, err := os.Stat(outputPath)
 		if err != nil {
-			return domain.Filmstrip{}, fmt.Errorf("FFmpeg did not create thumbnail %d/%d: %w", index+1, frameCount, err)
+			return fmt.Errorf("FFmpeg did not create thumbnail %d/%d: %w", index+1, frameCount, err)
 		}
 		if !frameInfo.Mode().IsRegular() || frameInfo.Size() <= 0 || frameInfo.Size() > maxImageBytes {
-			return domain.Filmstrip{}, fmt.Errorf("thumbnail %d/%d has an unexpected size: %d bytes",
+			return fmt.Errorf("thumbnail %d/%d has an unexpected size: %d bytes",
 				index+1, frameCount, frameInfo.Size())
 		}
 
-		manifest.Frames = append(manifest.Frames, diskFrame{
+		partialMu.Lock()
+		manifest.Frames[index] = diskFrame{
 			File:      filepath.Base(outputPath),
 			AtNS:      at.Nanoseconds(),
 			SizeBytes: frameInfo.Size(),
-		})
-		if progress != nil {
-			progress(len(manifest.Frames), frameCount)
 		}
+		partialFrames[index] = domain.FilmstripFrame{
+			At:        at,
+			Path:      outputPath,
+			SizeBytes: frameInfo.Size(),
+		}
+		partialMu.Unlock()
+		return nil
+	}, func(_ int, completed int) {
+		if update == nil {
+			return
+		}
+		partialMu.RLock()
+		snapshot := domain.Filmstrip{
+			Duration: duration,
+			Interval: interval,
+			Frames:   append([]domain.FilmstripFrame(nil), partialFrames...),
+		}
+		partialMu.RUnlock()
+		update(snapshot, completed, frameCount)
+	})
+	if err != nil {
+		return domain.Filmstrip{}, err
 	}
 
-	if len(manifest.Frames) == 0 {
-		return domain.Filmstrip{}, fmt.Errorf("FFmpeg did not produce any video thumbnails")
+	for index, frame := range manifest.Frames {
+		if frame.File == "" {
+			return domain.Filmstrip{}, fmt.Errorf("thumbnail generation stopped before frame %d/%d", index+1, frameCount)
+		}
 	}
 
 	encodedManifest, err := json.Marshal(manifest)
 	if err != nil {
 		return domain.Filmstrip{}, fmt.Errorf("encode filmstrip manifest: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(tempDir, manifestName), encodedManifest, 0o600); err != nil {
+	manifestTempPath := filepath.Join(targetDir, manifestName+".tmp")
+	if err := os.WriteFile(manifestTempPath, encodedManifest, 0o600); err != nil {
 		return domain.Filmstrip{}, fmt.Errorf("write filmstrip manifest: %w", err)
 	}
+	if err := os.Rename(manifestTempPath, filepath.Join(targetDir, manifestName)); err != nil {
+		return domain.Filmstrip{}, fmt.Errorf("publish filmstrip manifest: %w", err)
+	}
 
-	// A directory rename publishes all thumbnails and the manifest together.
-	// Readers therefore never mistake a partially generated cache for a
-	// complete one.
-	if err := os.RemoveAll(targetDir); err != nil {
-		return domain.Filmstrip{}, fmt.Errorf("replace incomplete filmstrip cache: %w", err)
-	}
-	if err := os.Rename(tempDir, targetDir); err != nil {
-		return domain.Filmstrip{}, fmt.Errorf("publish filmstrip cache: %w", err)
-	}
 	strip, ok := loadCachedFilmstrip(targetDir, info, duration)
 	if !ok {
 		return domain.Filmstrip{}, fmt.Errorf("published filmstrip cache failed validation")
 	}
+	published = true
 	touchDirectory(targetDir)
 	_ = trimDiskCache(g.cacheRoot, targetDir, maxDiskCache)
 	return strip, nil
+}
+
+// clampDuration bounds a preferred sampling position to the source video's
+// valid timeline.
+func clampDuration(position, duration time.Duration) time.Duration {
+	if position < 0 {
+		return 0
+	}
+	if position > duration {
+		return duration
+	}
+	return position
+}
+
+// prioritizedSampleOrder starts with the sample nearest the current playhead.
+// Stable sorting makes ties deterministic and keeps frame indexes reproducible.
+func prioritizedSampleOrder(frameCount int, interval, preferredPosition time.Duration) []int {
+	if frameCount <= 0 {
+		return nil
+	}
+	order := make([]int, frameCount)
+	for index := range order {
+		order[index] = index
+	}
+	if interval <= 0 {
+		return order
+	}
+	preferredIndex := int(math.Round(preferredPosition.Seconds() / interval.Seconds()))
+	preferredIndex = max(0, min(preferredIndex, frameCount-1))
+	sort.SliceStable(order, func(i, j int) bool {
+		left := absInt(order[i] - preferredIndex)
+		right := absInt(order[j] - preferredIndex)
+		return left < right
+	})
+	return order
+}
+
+func absInt(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
+
+// runBoundedJobs runs at most workerCount jobs simultaneously. Completion
+// callbacks run serially on the caller goroutine, not on worker goroutines.
+func runBoundedJobs(
+	ctx context.Context,
+	jobs []int,
+	workerCount int,
+	run func(context.Context, int) error,
+	onComplete func(index, completed int),
+) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if len(jobs) == 0 {
+		return nil
+	}
+	if workerCount < 1 {
+		return fmt.Errorf("worker count must be positive")
+	}
+
+	workCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	queue := make(chan int, len(jobs))
+	for _, job := range jobs {
+		queue <- job
+	}
+	close(queue)
+
+	completedJobs := make(chan int, len(jobs))
+	var wg sync.WaitGroup
+	var errMu sync.Mutex
+	var firstErr error
+
+	for worker := 0; worker < min(workerCount, len(jobs)); worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				var job int
+				select {
+				case <-workCtx.Done():
+					return
+				case next, ok := <-queue:
+					if !ok {
+						return
+					}
+					job = next
+				}
+
+				if err := run(workCtx, job); err != nil {
+					if workCtx.Err() == nil {
+						errMu.Lock()
+						if firstErr == nil {
+							firstErr = err
+						}
+						errMu.Unlock()
+						cancel()
+					}
+					return
+				}
+
+				select {
+				case completedJobs <- job:
+				case <-workCtx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(completedJobs)
+	}()
+
+	completed := 0
+	for job := range completedJobs {
+		if workCtx.Err() != nil {
+			continue
+		}
+		completed++
+		if onComplete != nil {
+			onComplete(job, completed)
+		}
+	}
+
+	errMu.Lock()
+	jobErr := firstErr
+	errMu.Unlock()
+	if jobErr != nil {
+		return jobErr
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if completed != len(jobs) {
+		return fmt.Errorf("thumbnail extraction stopped after %d of %d frames", completed, len(jobs))
+	}
+	return nil
 }
 
 func sampleFrameCount(duration time.Duration, intervalSeconds int64) int {
@@ -440,6 +671,11 @@ func trimDiskCache(root, keepDir string, budget int64) error {
 			continue
 		}
 		if _, err := os.Stat(filepath.Join(path, manifestName)); err != nil {
+			// Incomplete stable-path directories are left without a manifest
+			// after a crash. Remove them once they are no longer fresh work.
+			if info, statErr := entry.Info(); statErr == nil && time.Since(info.ModTime()) > time.Hour {
+				_ = os.RemoveAll(path)
+			}
 			continue
 		}
 		var size int64

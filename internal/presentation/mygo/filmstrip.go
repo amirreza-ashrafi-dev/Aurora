@@ -98,6 +98,7 @@ func (a *App) ensureFilmstripGeneration() {
 	a.filmstripGenerationAttemptedFor = mediaPath
 	generator := a.filmstripGenerator
 	window := a.win
+	preferredPosition := time.Duration(clampPlaybackPosition(a.filmstripPreviewPosition, duration.Seconds()) * float64(time.Second))
 	a.filmstripGenerating = true
 	a.filmstripProgressCompleted = 0
 	a.filmstripProgressTotal = 0
@@ -107,21 +108,36 @@ func (a *App) ensureFilmstripGeneration() {
 	go func() {
 		var strip domain.Filmstrip
 		var err error
-		if progressGenerator, ok := generator.(interface {
+		progressUpdate := func(partial domain.Filmstrip, completed, total int) {
+			if window == nil || window.IsDestroyed() {
+				return
+			}
+			window.Update(func() {
+				if a.win != window || window.IsDestroyed() || token != a.filmstripGenerationToken || a.path != mediaPath {
+					return
+				}
+				// The adapter sends a full-length frame slice with empty paths
+				// for samples that are still being generated. This keeps tile
+				// positions stable while completed thumbnails appear in place.
+				a.filmstripManifest = partial
+				a.filmstripManifestPath = mediaPath
+				a.filmstripProgressCompleted = completed
+				a.filmstripProgressTotal = total
+				window.Invalidate()
+				if a.controller != nil && !a.controller.IsDestroyed() {
+					a.controller.Invalidate()
+				}
+			})
+		}
+		if progressiveGenerator, ok := generator.(interface {
+			EnsureProgressive(context.Context, string, time.Duration, time.Duration, func(domain.Filmstrip, int, int)) (domain.Filmstrip, error)
+		}); ok {
+			strip, err = progressiveGenerator.EnsureProgressive(ctx, mediaPath, duration, preferredPosition, progressUpdate)
+		} else if progressGenerator, ok := generator.(interface {
 			EnsureWithProgress(context.Context, string, time.Duration, func(completed, total int)) (domain.Filmstrip, error)
 		}); ok {
 			strip, err = progressGenerator.EnsureWithProgress(ctx, mediaPath, duration, func(completed, total int) {
-				if window == nil || window.IsDestroyed() {
-					return
-				}
-				window.Update(func() {
-					if a.win != window || window.IsDestroyed() || token != a.filmstripGenerationToken || a.path != mediaPath {
-						return
-					}
-					a.filmstripProgressCompleted = completed
-					a.filmstripProgressTotal = total
-					window.Invalidate()
-				})
+				progressUpdate(domain.Filmstrip{Duration: duration}, completed, total)
 			})
 		} else {
 			strip, err = generator.Ensure(ctx, mediaPath, duration)
@@ -139,6 +155,11 @@ func (a *App) ensureFilmstripGeneration() {
 			a.filmstripGeneratingFor = ""
 			a.filmstripGenerationCancel = nil
 			if err != nil {
+				// Failed or canceled generations remove their staging cache
+				// directory, so discard every partial path from the UI too.
+				a.releaseFilmstripBitmaps()
+				a.filmstripManifest = domain.Filmstrip{}
+				a.filmstripManifestPath = ""
 				if ctx.Err() == nil {
 					a.filmstripError = err.Error()
 				}
@@ -424,6 +445,9 @@ func (a *App) requestVisibleFilmstripBitmaps(frames []domain.FilmstripFrame) {
 	keep := make(map[string]struct{}, len(frames))
 	missing := make([]domain.FilmstripFrame, 0, len(frames))
 	for _, frame := range frames {
+		if frame.Path == "" {
+			continue
+		}
 		keep[frame.Path] = struct{}{}
 		if cached := a.filmstripBitmaps[frame.Path]; cached != nil {
 			a.filmstripBitmapClock++
@@ -646,7 +670,7 @@ func (a *App) filmstripView(c *ui.Context) {
 				requestedFrames := frames
 				strip.Children(func() {
 					for i, frame := range requestedFrames {
-						tile := ui.Box(c).Key(frame.Path).Grow(1).FillHeight().MinWidth(0).Clip().
+						tile := ui.Box(c).Key(fmt.Sprintf("filmstrip-frame-%d", visibleStart+i)).Grow(1).FillHeight().MinWidth(0).Clip().
 							Radius(4).Background(ui.Hex("#202122"))
 
 						// Ask the tile itself whether it is hovered or was clicked.
@@ -673,11 +697,17 @@ func (a *App) filmstripView(c *ui.Context) {
 						}
 						tile = tile.Border(1, ui.Hex(border))
 						tile.Children(func() {
-							if cached := a.filmstripBitmaps[frame.Path]; cached != nil && cached.bitmap != nil {
-								ui.Image(c, cached.bitmap).FillWidth().FillHeight().Fit(ui.Cover)
+							if frame.Path != "" {
+								if cached := a.filmstripBitmaps[frame.Path]; cached != nil && cached.bitmap != nil {
+									ui.Image(c, cached.bitmap).FillWidth().FillHeight().Fit(ui.Cover)
+								} else {
+									ui.Column(c).Fill().Center().Children(func() {
+										ui.Text(c, "· · ·").FontSize(10).TextColor(ui.Hex(auroraMuted))
+									})
+								}
 							} else {
 								ui.Column(c).Fill().Center().Children(func() {
-									ui.Text(c, "· · ·").FontSize(10).TextColor(ui.Hex(auroraMuted))
+									ui.Text(c, "…").FontSize(10).TextColor(ui.Hex(auroraMuted))
 								})
 							}
 						})
@@ -693,8 +723,12 @@ func (a *App) filmstripView(c *ui.Context) {
 					a.shiftFilmstripWindow(1)
 				}
 			})
-			ui.Text(c, "Scroll to browse thumbnails · drag across and release to seek").
-				FontSize(8).TextColor(ui.Hex(auroraMuted))
+			hint := "Scroll to browse thumbnails · drag across and release to seek"
+			if a.filmstripGenerating && a.filmstripProgressTotal > 0 {
+				hint = fmt.Sprintf("Generating thumbnails %d/%d… · scroll to browse and drag to seek",
+					a.filmstripProgressCompleted, a.filmstripProgressTotal)
+			}
+			ui.Text(c, hint).FontSize(8).TextColor(ui.Hex(auroraMuted))
 		})
 }
 

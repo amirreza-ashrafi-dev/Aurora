@@ -45,15 +45,19 @@ The MyGo view functions, fullscreen flyout, UI-thread callbacks, and window life
 ## Visual timeline filmstrip
 
 The filmstrip is generated on demand through the `FilmstripGenerator` application
-port. The FFmpeg adapter runs one extraction process at a time with one decoder
-and filter thread, writes 160×90 JPEG frames to a temporary directory, and
-publishes a manifest only after the batch is complete. A source fingerprint
-(path, size, modification time, duration, and output format version) identifies
-the disk cache. The global disk cache is trimmed to 512 MiB on a best-effort
+port. The FFmpeg adapter runs at most two short-lived extraction processes at
+once, with each process limited to one decoder and one filter thread. Samples
+nearest the current playback position are generated first. Completed 160×90
+JPEGs are written to stable paths in the cache directory and sent to the
+presentation immediately; the cache remains invalid until the complete
+manifest is atomically published. A source fingerprint (path, size,
+modification time, duration, and output format version) identifies the disk
+cache. The global disk cache is trimmed to 512 MiB on a best-effort
 least-recently-used basis.
 
-The presentation decodes only the visible frames, keeps at most twelve decoded
-bitmaps, and releases CPU pixels when entries are evicted or the filmstrip
-closes. Timeline dragging changes a preview position only; the precise MPV seek
-is committed once on release. FFmpeg is an optional child-process dependency
+The presentation receives a full timeline with pending slots, then fills
+those slots as generated JPEGs arrive. It decodes only visible completed
+frames, keeps at most twelve decoded bitmaps, and releases CPU pixels when
+entries are evicted or the filmstrip closes. Timeline dragging changes a
+preview position only; the precise MPV seek is committed once on release. FFmpeg is an optional child-process dependency
 for the filmstrip and is not used for normal playback.

@@ -294,3 +294,34 @@ func TestClampPlaybackPosition(t *testing.T) {
 		})
 	}
 }
+
+func TestProgressiveFilmstripKeepsPendingSlotsInTheirTimelinePositions(t *testing.T) {
+	frames := make([]domain.FilmstripFrame, 48)
+	for i := range frames {
+		frames[i].At = time.Duration(i*10) * time.Second
+	}
+	// Only the frame nearest the preview position has finished decoding.
+	frames[24].Path = "frame_024.jpg"
+
+	app := &App{
+		filmstripManifest: domain.Filmstrip{
+			Duration: 8 * time.Minute,
+			Interval: 10 * time.Second,
+			Frames:   frames,
+		},
+		filmstripPreviewPosition: 240,
+	}
+	visible := app.visibleFilmstripFrames()
+	if len(visible) != filmstripVisibleFrames {
+		t.Fatalf("visible progressive frame count = %d, want %d", len(visible), filmstripVisibleFrames)
+	}
+	if visible[filmstripVisibleFrames/2].Path != "frame_024.jpg" {
+		t.Fatalf("center thumbnail path = %q, want generated frame", visible[filmstripVisibleFrames/2].Path)
+	}
+	if visible[0].Path != "" || visible[len(visible)-1].Path != "" {
+		t.Fatal("pending thumbnails should remain as empty slots in the visible timeline")
+	}
+	if visible[filmstripVisibleFrames/2].At != 240*time.Second {
+		t.Fatalf("generated thumbnail timestamp = %s, want 4m", visible[filmstripVisibleFrames/2].At)
+	}
+}

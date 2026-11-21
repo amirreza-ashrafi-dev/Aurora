@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 
-	"my-go/internal/application"
 	"my-go/internal/domain"
 )
 

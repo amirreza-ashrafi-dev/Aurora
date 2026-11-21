@@ -158,6 +158,27 @@ func TestPrioritizedSampleOrderStartsNearPreferredPosition(t *testing.T) {
 	}
 }
 
+func TestPrioritizedSampleOrderUsesActualTimestampDistance(t *testing.T) {
+	tests := []struct {
+		name string
+		position time.Duration
+		want []int
+	}{
+		{name: "playhead nearer next sample", position: 43 * time.Second, want: []int{4, 5, 3}},
+		{name: "playhead nearer previous sample", position: 47 * time.Second, want: []int{5, 4, 6}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := prioritizedSampleOrder(10, 10*time.Second, test.position)
+			for i, want := range test.want {
+				if got[i] != want {
+					t.Fatalf("sample order prefix = %v, want %v", got[:len(test.want)], test.want)
+				}
+			}
+		})
+	}
+}
+
 func TestRunBoundedJobsNeverExceedsTwoWorkers(t *testing.T) {
 	jobs := []int{0, 1, 2, 3, 4, 5, 6, 7}
 	var active atomic.Int32

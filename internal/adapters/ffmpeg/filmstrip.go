@@ -356,14 +356,21 @@ func prioritizedSampleOrder(frameCount int, interval, preferredPosition time.Dur
 	if interval <= 0 {
 		return order
 	}
-	preferredIndex := int(math.Round(preferredPosition.Seconds() / interval.Seconds()))
-	preferredIndex = max(0, min(preferredIndex, frameCount-1))
 	sort.SliceStable(order, func(i, j int) bool {
-		left := absInt(order[i] - preferredIndex)
-		right := absInt(order[j] - preferredIndex)
+		left := sampleTimeDistance(order[i], interval, preferredPosition)
+		right := sampleTimeDistance(order[j], interval, preferredPosition)
 		return left < right
 	})
 	return order
+}
+
+
+func sampleTimeDistance(index int, interval, preferredPosition time.Duration) time.Duration {
+	sampleTime := time.Duration(index) * interval
+	if sampleTime < preferredPosition {
+		return preferredPosition - sampleTime
+	}
+	return sampleTime - preferredPosition
 }
 
 func absInt(value int) int {

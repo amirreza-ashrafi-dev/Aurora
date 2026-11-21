@@ -52,6 +52,8 @@ type App struct {
 	filmstripGenerationToken uint64
 	filmstripPreviewPosition float64
 	filmstripDragging bool
+	filmstripHoverPinned bool
+	filmstripHoverStart int
 	filmstripBitmaps map[string]*filmstripBitmap
 	filmstripBitmapClock uint64
 	filmstripLoadInFlight bool

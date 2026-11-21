@@ -701,7 +701,7 @@ func (a *App) filmstripView(c *ui.Context) {
 // filmstripFrameIndexForPosition returns the selected tile in the current
 // window, or -1 when the retained preview position is outside that window.
 func filmstripFrameIndexForPosition(frames []domain.FilmstripFrame, positionSeconds float64) int {
-	if len(frames) == 0 || math.IsNaN(positionSeconds) || math.IsInf(positionSeconds, 0) {
+	if len(frames) == 0 || positionSeconds < 0 || math.IsNaN(positionSeconds) || math.IsInf(positionSeconds, 0) {
 		return -1
 	}
 
@@ -730,7 +730,10 @@ func filmstripFrameIndexForPosition(frames []domain.FilmstripFrame, positionSeco
 	case len(frames) == 1:
 		// With a single thumbnail there is no neighbor from which to infer
 		// its interval, so only highlight it at its own timestamp.
-		return map[bool]int{true: selectedIndex, false: -1}[distance == 0]
+		if distance == 0 {
+			return selectedIndex
+		}
+		return -1
 	case selectedIndex == 0:
 		nearestGap = absDuration(frames[1].At - frames[0].At)
 	case selectedIndex == len(frames)-1:

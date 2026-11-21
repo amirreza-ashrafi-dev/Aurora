@@ -329,7 +329,7 @@ func TestProgressiveFilmstripKeepsPendingSlotsInTheirTimelinePositions(t *testin
 func TestCloseFilmstripDiscardsIncompleteProgressiveManifest(t *testing.T) {
 	cancelled := false
 	app := &App{
-		filmstripOpen: true,
+		filmstripOpen:       true,
 		filmstripGenerating: true,
 		filmstripManifest: domain.Filmstrip{
 			Duration: time.Minute,
@@ -338,11 +338,11 @@ func TestCloseFilmstripDiscardsIncompleteProgressiveManifest(t *testing.T) {
 				{At: 10 * time.Second},
 			},
 		},
-		filmstripManifestPath: "movie.mkv",
-		filmstripGenerationAttemptedFor: "movie.mkv",
-		filmstripProgressCompleted: 1,
-		filmstripProgressTotal: 6,
-		filmstripGenerationCancel: func() { cancelled = true },
+		filmstripManifestPath:           "movie.mkv",
+		filmstripGenerationAttemptedFor:  "movie.mkv",
+		filmstripProgressCompleted:      1,
+		filmstripProgressTotal:          6,
+		filmstripGenerationCancel:       func() { cancelled = true },
 	}
 	app.closeFilmstrip()
 	if !cancelled {

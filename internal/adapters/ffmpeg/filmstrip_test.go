@@ -160,9 +160,9 @@ func TestPrioritizedSampleOrderStartsNearPreferredPosition(t *testing.T) {
 
 func TestPrioritizedSampleOrderUsesActualTimestampDistance(t *testing.T) {
 	tests := []struct {
-		name string
+		name     string
 		position time.Duration
-		want []int
+		want     []int
 	}{
 		{name: "playhead nearer next sample", position: 43 * time.Second, want: []int{4, 5, 3}},
 		{name: "playhead nearer previous sample", position: 47 * time.Second, want: []int{5, 4, 6}},

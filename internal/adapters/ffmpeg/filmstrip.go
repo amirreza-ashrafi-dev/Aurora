@@ -15,22 +15,22 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
-	"sync"
 	"strings"
+	"sync"
 	"time"
 
 	"my-go/internal/domain"
 )
 
 const (
-	manifestVersion = 1
-	thumbnailWidth  = 160
-	thumbnailHeight = 90
-	targetFrames         = 48
+	manifestVersion     = 1
+	thumbnailWidth      = 160
+	thumbnailHeight     = 90
+	targetFrames        = 48
 	maxConcurrentFFmpeg = 2
-	maxDiskCache    = int64(512 << 20)
-	maxImageBytes   = int64(256 << 10)
-	maxManifestBytes = int64(64 << 10)
+	maxDiskCache        = int64(512 << 20)
+	maxImageBytes       = int64(256 << 10)
+	maxManifestBytes    = int64(64 << 10)
 )
 
 const manifestName = "manifest.json"

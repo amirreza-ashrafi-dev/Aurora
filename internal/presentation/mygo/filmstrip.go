@@ -97,11 +97,33 @@ func (a *App) ensureFilmstripGeneration() {
 	generator := a.filmstripGenerator
 	window := a.win
 	a.filmstripGenerating = true
+	a.filmstripProgressCompleted = 0
+	a.filmstripProgressTotal = 0
 	a.filmstripGeneratingFor = mediaPath
 	a.filmstripError = ""
 
 	go func() {
-		strip, err := generator.Ensure(ctx, mediaPath, duration)
+		var strip domain.Filmstrip
+		var err error
+		if progressGenerator, ok := generator.(interface {
+			EnsureWithProgress(context.Context, string, time.Duration, func(completed, total int)) (domain.Filmstrip, error)
+		}); ok {
+			strip, err = progressGenerator.EnsureWithProgress(ctx, mediaPath, duration, func(completed, total int) {
+				if window == nil || window.IsDestroyed() {
+					return
+				}
+				window.Update(func() {
+					if a.win != window || window.IsDestroyed() || token != a.filmstripGenerationToken || a.path != mediaPath {
+						return
+					}
+					a.filmstripProgressCompleted = completed
+					a.filmstripProgressTotal = total
+					window.Invalidate()
+				})
+			})
+		} else {
+			strip, err = generator.Ensure(ctx, mediaPath, duration)
+		}
 		if window == nil || window.IsDestroyed() {
 			return
 		}
@@ -110,6 +132,8 @@ func (a *App) ensureFilmstripGeneration() {
 				return
 			}
 			a.filmstripGenerating = false
+			a.filmstripProgressCompleted = 0
+			a.filmstripProgressTotal = 0
 			a.filmstripGeneratingFor = ""
 			a.filmstripGenerationCancel = nil
 			if err != nil {
@@ -145,6 +169,8 @@ func (a *App) resetFilmstripForMedia() {
 	a.filmstripManifest = domain.Filmstrip{}
 	a.filmstripManifestPath = ""
 	a.filmstripGenerating = false
+	a.filmstripProgressCompleted = 0
+	a.filmstripProgressTotal = 0
 	a.filmstripGeneratingFor = ""
 	a.filmstripGenerationAttemptedFor = ""
 	a.filmstripError = ""
@@ -381,6 +407,9 @@ func (a *App) filmstripView(c *ui.Context) {
 
 			if len(a.filmstripManifest.Frames) == 0 {
 				message := "Preparing video thumbnails…"
+				if a.filmstripGenerating && a.filmstripProgressTotal > 0 {
+					message = fmt.Sprintf("Generating thumbnails %d/%d…", a.filmstripProgressCompleted, a.filmstripProgressTotal)
+				}
 				if a.filmstripError != "" {
 					message = a.filmstripError
 				} else if !a.filmstripGenerating && (a.state.Duration <= 0 || math.IsNaN(a.state.Duration)) {

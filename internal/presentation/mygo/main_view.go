@@ -270,7 +270,7 @@ func (a *App) normalView(c *ui.Context) {
 						}
 						timeline := ui.Slider(c, &a.timelinePreviewPosition, 0, maxDuration).
 							Fill().Height(20)
-						a.updateTimeline(timeline.Dragging(), timeline.Changed())
+						a.updateTimeline(timeline.Dragging(), timeline.Changed(), timeline.PressCanceled())
 						ui.Text(c, formatTime(a.state.Duration)).
 							Width(48).FontSize(9).TextColor(ui.Hex(auroraMuted))
 					})

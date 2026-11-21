@@ -64,7 +64,7 @@ When you open a video with saved progress, Aurora offers **Resume** or **Start o
 3. Check that the MPV runtime files are available in `third_party/mpv`.
 4. For the thumbnail filmstrip, place a suitable Windows FFmpeg build at `third_party/ffmpeg/ffmpeg.exe`. The binary is not included in this source repository; FFmpeg is also discovered on `PATH`.
 5. Open a terminal in the project directory.
-5. Run:
+6. Run:
 
 ```powershell
 go tool mygo build -platform windows/amd64

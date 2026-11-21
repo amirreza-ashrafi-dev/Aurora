@@ -244,9 +244,16 @@ func (a *App) chooseStartOver() {
 	a.status = "Playing from the beginning"
 }
 
-func (a *App) updateTimeline(dragging, changed bool) {
+func (a *App) updateTimeline(dragging, changed bool, canceled ...bool) {
 	wasScrubbing := a.scrubbing
 	a.scrubbing = dragging
+
+	// A pointer cancellation must restore the last committed playback
+	// position rather than seeking to a preview the user did not release.
+	if len(canceled) > 0 && canceled[0] {
+		a.timelinePreviewPosition = a.state.Position
+		return
+	}
 
 	// Keep the pointer's preview position separate from the actual playback
 	// position. A precise MPV seek can be expensive; issue it once when the

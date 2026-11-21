@@ -57,7 +57,7 @@ func (a *App) fullscreenControls(c *ui.Context) {
 					a.timelinePreviewPosition = a.state.Position
 				}
 				timeline := ui.Slider(c, &a.timelinePreviewPosition, 0, maxDuration).Fill().Height(24)
-				a.updateTimeline(timeline.Dragging(), timeline.Changed())
+				a.updateTimeline(timeline.Dragging(), timeline.Changed(), timeline.PressCanceled())
 				ui.Text(c, formatTime(a.state.Duration)).Width(48).FontSize(10).TextColor(ui.Hex(auroraMuted))
 			})
 			a.filmstripView(c)

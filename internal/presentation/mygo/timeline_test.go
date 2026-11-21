@@ -68,3 +68,21 @@ func TestTimelineClickCommitsOneSeek(t *testing.T) {
 		t.Fatalf("seek calls = %#v, want one seek to 37", player.seekCalls)
 	}
 }
+
+func TestTimelineCancellationRestoresCommittedPosition(t *testing.T) {
+	player := &timelineTestPlayer{}
+	app := &App{
+		player: player,
+		path:   "movie.mkv",
+		state:  domain.PlaybackState{Position: 5, Duration: 120},
+		scrubbing: true,
+		timelinePreviewPosition: 37,
+	}
+	app.updateTimeline(false, false, true)
+	if len(player.seekCalls) != 0 {
+		t.Fatalf("canceled timeline drag issued %d seeks, want 0", len(player.seekCalls))
+	}
+	if app.timelinePreviewPosition != 5 {
+		t.Fatalf("preview position after cancellation = %v, want 5", app.timelinePreviewPosition)
+	}
+}

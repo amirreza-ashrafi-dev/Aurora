@@ -21,13 +21,13 @@ type Player interface {
 	Close()
 }
 
-// ProgressRepository stores the most recent playback position for each media path.
 // FilmstripGenerator creates or reuses a disk-cached set of video preview frames.
 // Implementations must honour cancellation and avoid retaining decoded images.
 type FilmstripGenerator interface {
 	Ensure(ctx context.Context, mediaPath string, duration time.Duration) (domain.Filmstrip, error)
 }
 
+// ProgressRepository stores the most recent playback position for each media path.
 type ProgressRepository interface {
 	Load() ([]domain.PlaybackProgress, error)
 	Save(domain.PlaybackProgress) error

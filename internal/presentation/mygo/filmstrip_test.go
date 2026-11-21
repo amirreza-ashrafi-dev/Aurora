@@ -112,6 +112,42 @@ func TestVisibleFilmstripFramesKeepsPinnedWindow(t *testing.T) {
 }
 
 
+func TestFilmstripSelectionPersistsAcrossNextWindow(t *testing.T) {
+	frames := make([]domain.FilmstripFrame, 16)
+	for i := range frames {
+		frames[i].At = time.Duration(i) * time.Second
+	}
+
+	// The user hovers the last frame in the initial nine-frame window.
+	previewPosition := frames[8].At.Seconds()
+	initialWindow := filmstripFramesAtStart(frames, 0)
+	if got := filmstripFrameIndexForPosition(initialWindow, previewPosition); got != 8 {
+		t.Fatalf("initial selected index = %d, want 8", got)
+	}
+
+	// Moving to Next changes the visible window but must not replace the
+	// selected preview position with the playback position.
+	nextWindow := filmstripFramesAtStart(frames, filmstripShiftWindowStart(len(frames), 0, 1))
+	if got := filmstripFrameIndexForPosition(nextWindow, previewPosition); got != 5 {
+		t.Fatalf("selected index after Next = %d, want 5 (same timestamp)", got)
+	}
+	if nextWindow[5].At != frames[8].At {
+		t.Fatalf("selection changed from %s to %s after browsing",
+			frames[8].At, nextWindow[5].At)
+	}
+}
+
+func TestFilmstripSelectionOutsideWindowHasNoHighlight(t *testing.T) {
+	frames := make([]domain.FilmstripFrame, 18)
+	for i := range frames {
+		frames[i].At = time.Duration(i) * time.Second
+	}
+	window := filmstripFramesAtStart(frames, 9)
+	if got := filmstripFrameIndexForPosition(window, frames[3].At.Seconds()); got != -1 {
+		t.Fatalf("selection outside visible window = %d, want -1", got)
+	}
+}
+
 func TestFilmstripFrameIndexAtXUsesActualTileGaps(t *testing.T) {
 	const rowWidth = float32(600)
 	const padding = float32(3)

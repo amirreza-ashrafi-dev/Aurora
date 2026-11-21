@@ -620,11 +620,11 @@ func (a *App) filmstripView(c *ui.Context) {
 						// label and the single seek committed on release.
 						hoveredIndex = filmstripFrameIndexAtX(x, bounds.W, len(frames))
 						a.filmstripPreviewPosition = frames[hoveredIndex].At.Seconds()
-					} else if !pointerActive {
-						// Keep the browsed window in place when the pointer moves
-						// to the navigation buttons; only restore the preview time.
-						a.filmstripPreviewPosition = a.state.Position
 					}
+					// Do not reset the preview when the pointer leaves the
+					// thumbnails. It is the user's current selection and must
+					// remain highlighted while they move to Previous/Next or
+					// browse with the wheel. Playback position stays separate.
 
 					if !pressed && a.filmstripDragging {
 						a.filmstripDragging = false
@@ -634,18 +634,15 @@ func (a *App) filmstripView(c *ui.Context) {
 
 				frames := a.visibleFilmstripFrames()
 				a.requestVisibleFilmstripBitmaps(frames)
-				selected := nearestFilmstripFrame(frames, a.filmstripPreviewPosition)
-				hasPlaybackSelection := len(frames) > 0 &&
-					a.filmstripPreviewPosition >= frames[0].At.Seconds() &&
-					a.filmstripPreviewPosition <= frames[len(frames)-1].At.Seconds()
+				selectedIndex := filmstripFrameIndexForPosition(frames, a.filmstripPreviewPosition)
 				strip.Children(func() {
 					for i, frame := range frames {
 						// While the pointer is over the strip, use its exact tile
-						// index. Do not round-trip through float seconds and a
-						// nearest-frame search: the border must match the tile hit.
-						highlight := pointerActive && i == hoveredIndex
-						if !pointerActive {
-							highlight = hasPlaybackSelection && frame.At == selected.At
+						// index. Otherwise keep highlighting the last preview frame,
+						// including while the pointer is over the navigation buttons.
+						highlight := i == selectedIndex
+						if pointerActive {
+							highlight = i == hoveredIndex
 						}
 						border := auroraBorderSoft
 						if highlight {
@@ -678,6 +675,26 @@ func (a *App) filmstripView(c *ui.Context) {
 			ui.Text(c, "Scroll to browse thumbnails · drag across and release to seek").
 				FontSize(8).TextColor(ui.Hex(auroraMuted))
 		})
+}
+
+// filmstripFrameIndexForPosition returns the selected tile in the current
+// window, or -1 when the retained preview position is outside that window.
+func filmstripFrameIndexForPosition(frames []domain.FilmstripFrame, positionSeconds float64) int {
+	if len(frames) == 0 {
+		return -1
+	}
+	first := frames[0].At.Seconds()
+	last := frames[len(frames)-1].At.Seconds()
+	if positionSeconds < first || positionSeconds > last {
+		return -1
+	}
+	selected := nearestFilmstripFrame(frames, positionSeconds)
+	for i := range frames {
+		if frames[i].At == selected.At {
+			return i
+		}
+	}
+	return -1
 }
 
 func nearestFilmstripFrame(frames []domain.FilmstripFrame, positionSeconds float64) domain.FilmstripFrame {

@@ -13,9 +13,11 @@ import (
 )
 
 const (
-	filmstripVisibleFrames = 9
-	filmstripBitmapLimit   = 12
-	filmstripImageMaxBytes = int64(256 << 10)
+	filmstripVisibleFrames  = 9
+	filmstripBitmapLimit    = 12
+	filmstripImageMaxBytes  = int64(256 << 10)
+	filmstripBrowseStep     = 3
+	filmstripWheelThreshold = float32(99)
 )
 
 type filmstripBitmap struct {
@@ -179,6 +181,7 @@ func (a *App) resetFilmstripForMedia() {
 	a.filmstripDragging = false
 	a.filmstripHoverPinned = false
 	a.filmstripHoverStart = 0
+	a.filmstripWheelRemainder = 0
 	a.releaseFilmstripBitmaps()
 }
 
@@ -203,6 +206,7 @@ func (a *App) abandonFilmstripAfterShutdown() {
 	a.filmstripDragging = false
 	a.filmstripHoverPinned = false
 	a.filmstripHoverStart = 0
+	a.filmstripWheelRemainder = 0
 	a.filmstripBitmaps = nil
 	a.filmstripBitmapClock = 0
 }
@@ -222,6 +226,7 @@ func (a *App) closeFilmstrip() {
 	a.filmstripDragging = false
 	a.filmstripHoverPinned = false
 	a.filmstripHoverStart = 0
+	a.filmstripWheelRemainder = 0
 	a.filmstripPreviewPosition = a.state.Position
 	a.releaseFilmstripBitmaps()
 }
@@ -290,6 +295,87 @@ func filmstripFrameIndexAtRatio(ratio float64, frameCount int) int {
 	ratio = math.Max(0, math.Min(1, ratio))
 	index := int(math.Floor(ratio * float64(frameCount)))
 	return min(index, frameCount-1)
+}
+
+// filmstripShiftWindowStart moves the visible window by three thumbnails
+// per navigation step and clamps it to the first or last available window.
+func filmstripShiftWindowStart(frameCount, currentStart, steps int) int {
+	visibleCount := min(frameCount, filmstripVisibleFrames)
+	if visibleCount <= 0 {
+		return 0
+	}
+	maxStart := frameCount - visibleCount
+	return max(0, min(currentStart+steps*filmstripBrowseStep, maxStart))
+}
+
+// filmstripWheelSteps turns wheel motion into browsing steps. Standard mouse
+// wheel messages advance one step per event; precise touchpad deltas accumulate
+// until they cover roughly one default Windows wheel notch.
+func filmstripWheelSteps(delta, remainder float32, precise bool) (int, float32) {
+	if delta == 0 || math.IsNaN(float64(delta)) || math.IsInf(float64(delta), 0) {
+		return 0, remainder
+	}
+	if !precise {
+		if delta < 0 {
+			return -1, 0
+		}
+		return 1, 0
+	}
+	total := remainder + delta
+	steps := int(total / filmstripWheelThreshold)
+	return steps, total - float32(steps)*filmstripWheelThreshold
+}
+
+func (a *App) currentFilmstripWindowStart() int {
+	if a == nil {
+		return 0
+	}
+	frameCount := len(a.filmstripManifest.Frames)
+	if a.filmstripHoverPinned {
+		visibleCount := min(frameCount, filmstripVisibleFrames)
+		return max(0, min(a.filmstripHoverStart, max(0, frameCount-visibleCount)))
+	}
+	return filmstripWindowStart(
+		frameCount,
+		a.filmstripPreviewPosition,
+		a.filmstripManifest.Duration.Seconds(),
+	)
+}
+
+// shiftFilmstripWindow browses without changing playback or the preview seek
+// position. The next pointer movement over the strip selects the frame under it.
+func (a *App) shiftFilmstripWindow(steps int) {
+	if a == nil || steps == 0 {
+		return
+	}
+	frameCount := len(a.filmstripManifest.Frames)
+	if frameCount == 0 {
+		return
+	}
+	start := a.currentFilmstripWindowStart()
+	a.filmstripHoverStart = filmstripShiftWindowStart(frameCount, start, steps)
+	a.filmstripHoverPinned = true
+}
+
+// handleFilmstripInput consumes wheel events only while the pointer is over
+// the filmstrip row. It deliberately does not seek the player.
+func (a *App) handleFilmstripInput(ev ui.InputEvent) bool {
+	if ev.Kind != ui.InputScroll {
+		return false
+	}
+	if a == nil || !a.filmstripOpen || a.filmstripDragging {
+		return true
+	}
+	delta := ev.DY
+	if delta == 0 {
+		delta = ev.DX
+	}
+	steps, remainder := filmstripWheelSteps(delta, a.filmstripWheelRemainder, ev.Precise)
+	a.filmstripWheelRemainder = remainder
+	if steps != 0 {
+		a.shiftFilmstripWindow(steps)
+	}
+	return true
 }
 
 func (a *App) requestVisibleFilmstripBitmaps(frames []domain.FilmstripFrame) {
@@ -455,81 +541,109 @@ func (a *App) filmstripView(c *ui.Context) {
 				return
 			}
 
-			strip := ui.Row(c).FillWidth().Height(72).Gap(3).Padding(3).
-				Background(ui.Hex("#080909")).Radius(5)
-			x, _, over := strip.PointerPosition()
-			bounds := strip.Bounds()
-			pressedInside := strip.PressedInside()
-			pressed := strip.Pressed()
-			if pressedInside {
-				a.filmstripDragging = true
-			}
+			windowStart := a.currentFilmstripWindowStart()
+			maxWindowStart := max(0, len(a.filmstripManifest.Frames)-min(len(a.filmstripManifest.Frames), filmstripVisibleFrames))
+			ui.Row(c).FillWidth().Height(72).Gap(6).AlignItems(ui.Center).Children(func() {
+				previous := ui.Button(c, "‹").Width(30).MinWidth(30).Shrink(0).Height(72).Padding(0).
+					Radius(6).Background(ui.Hex("#191A1B")).
+					Border(1, ui.Hex(auroraBorderSoft)).
+					FontSize(14).TextColor(ui.Hex(auroraText)).
+					Disabled(windowStart <= 0).Tooltip("Previous thumbnails")
+				if previous.Clicked() {
+					a.shiftFilmstripWindow(-1)
+				}
 
-			if strip.PressCanceled() {
-				a.filmstripDragging = false
-				a.filmstripHoverPinned = false
-				a.filmstripHoverStart = 0
-				a.filmstripPreviewPosition = a.state.Position
-			} else {
+				strip := ui.Row(c).Grow(1).FillHeight().MinWidth(0).Gap(3).Padding(3).
+					Background(ui.Hex("#080909")).Radius(5)
+				strip.HandleInput(a.handleFilmstripInput)
+				x, _, over := strip.PointerPosition()
+				bounds := strip.Bounds()
+				pressedInside := strip.PressedInside()
+				pressed := strip.Pressed()
+				if pressedInside {
+					a.filmstripDragging = true
+				}
+
 				pointerActive := over || pressed || a.filmstripDragging
-				if pointerActive && !a.filmstripHoverPinned {
-					a.filmstripHoverStart = filmstripWindowStart(
-						len(a.filmstripManifest.Frames),
-						a.filmstripPreviewPosition,
-						a.filmstripManifest.Duration.Seconds(),
-					)
-					a.filmstripHoverPinned = true
+				if strip.PressCanceled() {
+					a.filmstripDragging = false
+					a.filmstripHoverPinned = false
+					a.filmstripHoverStart = 0
+					a.filmstripWheelRemainder = 0
+					a.filmstripPreviewPosition = a.state.Position
+					pointerActive = false
+				} else {
+					if pointerActive && !a.filmstripHoverPinned {
+						a.filmstripHoverStart = filmstripWindowStart(
+							len(a.filmstripManifest.Frames),
+							a.filmstripPreviewPosition,
+							a.filmstripManifest.Duration.Seconds(),
+						)
+						a.filmstripHoverPinned = true
+					}
+
+					frames := a.visibleFilmstripFrames()
+					if pointerActive && len(frames) > 0 && bounds.W > 6 {
+						// PointerPosition is local to the row's outer bounds.
+						// Exclude the row's 3-DIP left/right padding so the
+						// first and last thumbnail centers match the pointer.
+						contentWidth := bounds.W - 6
+						contentX := x - 3
+						ratio := float64(contentX / contentWidth)
+						index := filmstripFrameIndexAtRatio(ratio, len(frames))
+						// Selecting the frame under the pointer keeps the visual
+						// focus, timestamp, and eventual seek on the same frame.
+						a.filmstripPreviewPosition = frames[index].At.Seconds()
+					} else if !pointerActive {
+						// Keep the browsed window in place when the pointer moves
+						// to the navigation buttons; only restore the preview time.
+						a.filmstripPreviewPosition = a.state.Position
+					}
+
+					if !pressed && a.filmstripDragging {
+						a.filmstripDragging = false
+						a.seekToFilmstripPreview()
+					}
 				}
 
 				frames := a.visibleFilmstripFrames()
-				if pointerActive && len(frames) > 0 && bounds.W > 6 {
-					// PointerPosition is local to the row's outer bounds.
-					// Exclude the row's 3-DIP left/right padding so the
-					// first and last thumbnail centers match the pointer.
-					contentWidth := bounds.W - 6
-					contentX := x - 3
-					ratio := float64(contentX / contentWidth)
-					index := filmstripFrameIndexAtRatio(ratio, len(frames))
-					// Selecting the frame under the pointer keeps the visual
-					// focus, timestamp, and eventual seek on the same frame.
-					a.filmstripPreviewPosition = frames[index].At.Seconds()
-				} else if !pointerActive {
-					a.filmstripHoverPinned = false
-					a.filmstripHoverStart = 0
-					a.filmstripPreviewPosition = a.state.Position
-				}
-
-				if !pressed && a.filmstripDragging {
-					a.filmstripDragging = false
-					a.seekToFilmstripPreview()
-				}
-			}
-
-			frames := a.visibleFilmstripFrames()
-			a.requestVisibleFilmstripBitmaps(frames)
-			selected := nearestFilmstripFrame(frames, a.filmstripPreviewPosition)
-			strip.Children(func() {
-				for _, frame := range frames {
-					highlight := frame.At == selected.At
-					border := auroraBorderSoft
-					if highlight {
-						border = auroraAccent
-					}
-					tile := ui.Box(c).Grow(1).FillHeight().MinWidth(0).Clip().
-						Radius(4).Border(1, ui.Hex(border)).
-						Background(ui.Hex("#202122"))
-					tile.Children(func() {
-						if cached := a.filmstripBitmaps[frame.Path]; cached != nil && cached.bitmap != nil {
-							ui.Image(c, cached.bitmap).FillWidth().FillHeight().Fit(ui.Cover)
-						} else {
-							ui.Column(c).Fill().Center().Children(func() {
-								ui.Text(c, "· · ·").FontSize(10).TextColor(ui.Hex(auroraMuted))
-							})
+				a.requestVisibleFilmstripBitmaps(frames)
+				selected := nearestFilmstripFrame(frames, a.filmstripPreviewPosition)
+				hasSelection := len(frames) > 0 && (pointerActive ||
+					a.filmstripPreviewPosition >= frames[0].At.Seconds() &&
+						a.filmstripPreviewPosition <= frames[len(frames)-1].At.Seconds())
+				strip.Children(func() {
+					for _, frame := range frames {
+						highlight := hasSelection && frame.At == selected.At
+						border := auroraBorderSoft
+						if highlight {
+							border = auroraAccent
 						}
-					})
+						tile := ui.Box(c).Grow(1).FillHeight().MinWidth(0).Clip().
+							Radius(4).Border(1, ui.Hex(border)).
+							Background(ui.Hex("#202122"))
+						tile.Children(func() {
+							if cached := a.filmstripBitmaps[frame.Path]; cached != nil && cached.bitmap != nil {
+								ui.Image(c, cached.bitmap).FillWidth().FillHeight().Fit(ui.Cover)
+							} else {
+								ui.Column(c).Fill().Center().Children(func() {
+									ui.Text(c, "· · ·").FontSize(10).TextColor(ui.Hex(auroraMuted))
+								})
+							}
+						})
+					}
+				})
+
+				next := ui.Button(c, "›").Width(30).MinWidth(30).Shrink(0).Height(72).Padding(0).
+					Radius(6).Background(ui.Hex("#191A1B")).
+					Border(1, ui.Hex(auroraBorderSoft)).
+					FontSize(14).TextColor(ui.Hex(auroraText)).
+					Disabled(windowStart >= maxWindowStart).Tooltip("Next thumbnails")
+				if next.Clicked() {
+					a.shiftFilmstripWindow(1)
 				}
 			})
-			ui.Text(c, "Drag across the thumbnails and release to seek").
+			ui.Text(c, "Scroll to browse thumbnails · drag across and release to seek").
 				FontSize(8).TextColor(ui.Hex(auroraMuted))
 		})
 }

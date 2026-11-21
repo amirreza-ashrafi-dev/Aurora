@@ -111,6 +111,57 @@ func TestVisibleFilmstripFramesKeepsPinnedWindow(t *testing.T) {
 	}
 }
 
+
+func TestFilmstripShiftWindowStart(t *testing.T) {
+	tests := []struct {
+		name        string
+		frameCount  int
+		current     int
+		steps       int
+		want        int
+	}{
+		{name: "advance three frames", frameCount: 48, current: 10, steps: 1, want: 13},
+		{name: "move back three frames", frameCount: 48, current: 10, steps: -1, want: 7},
+		{name: "clamp at beginning", frameCount: 48, current: 1, steps: -1, want: 0},
+		{name: "clamp at end", frameCount: 48, current: 39, steps: 1, want: 39},
+		{name: "short filmstrip", frameCount: 5, current: 0, steps: 1, want: 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := filmstripShiftWindowStart(test.frameCount, test.current, test.steps); got != test.want {
+				t.Fatalf("filmstripShiftWindowStart() = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+func TestFilmstripWheelSteps(t *testing.T) {
+	tests := []struct {
+		name           string
+		delta           float32
+		remainder       float32
+		precise         bool
+		wantSteps       int
+		wantRemainder   float32
+	}{
+		{name: "mouse wheel down", delta: 99, wantSteps: 1},
+		{name: "mouse wheel up", delta: -99, wantSteps: -1},
+		{name: "touchpad accumulates", delta: -45, precise: true, wantRemainder: -45},
+		{name: "touchpad completes step", delta: -54, remainder: -45, precise: true, wantSteps: -1},
+		{name: "touchpad keeps remainder", delta: 120, precise: true, wantSteps: 1, wantRemainder: 21},
+		{name: "zero delta", remainder: 12, precise: true, wantRemainder: 12},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			gotSteps, gotRemainder := filmstripWheelSteps(test.delta, test.remainder, test.precise)
+			if gotSteps != test.wantSteps || gotRemainder != test.wantRemainder {
+				t.Fatalf("filmstripWheelSteps() = (%d, %v), want (%d, %v)",
+					gotSteps, gotRemainder, test.wantSteps, test.wantRemainder)
+			}
+		})
+	}
+}
+
 func TestClampPlaybackPosition(t *testing.T) {
 	tests := []struct {
 		name     string

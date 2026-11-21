@@ -83,6 +83,13 @@ func NewFilmstripGeneratorAt(ffmpegPath, cacheRoot string) *FilmstripGenerator {
 // Ensure returns a complete disk-cached filmstrip, generating it only when
 // the source fingerprint or thumbnail format changes.
 func (g *FilmstripGenerator) Ensure(ctx context.Context, mediaPath string, duration time.Duration) (domain.Filmstrip, error) {
+	return g.EnsureWithProgress(ctx, mediaPath, duration, nil)
+}
+
+// EnsureWithProgress builds a cached filmstrip using fast input seeks. Each
+// sample starts one short-lived FFmpeg process, and the worker semaphore keeps
+// the process count at one so random-access sampling stays memory bounded.
+func (g *FilmstripGenerator) EnsureWithProgress(ctx context.Context, mediaPath string, duration time.Duration, progress func(completed, total int)) (domain.Filmstrip, error) {
 	if g == nil {
 		return domain.Filmstrip{}, fmt.Errorf("FFmpeg filmstrip generator is unavailable")
 	}
@@ -148,55 +155,7 @@ func (g *FilmstripGenerator) Ensure(ctx context.Context, mediaPath string, durat
 	defer os.RemoveAll(tempDir)
 
 	stepSeconds := sampleIntervalSeconds(duration)
-	outputPattern := filepath.Join(tempDir, "frame_%03d.jpg")
-	filter := videoFilter(stepSeconds)
-	args := []string{
-		"-hide_banner",
-		"-loglevel", "error",
-		"-nostdin",
-		"-threads", "1",
-		"-filter_threads", "1",
-		"-i", absolutePath,
-		"-map", "0:V:0",
-		"-an",
-		"-sn",
-		"-dn",
-		"-vf", filter,
-		"-q:v", "6",
-		"-frames:v", strconv.Itoa(targetFrames),
-		"-start_number", "0",
-		"-f", "image2",
-		"-y", outputPattern,
-	}
-
-	cmd := exec.CommandContext(ctx, g.ffmpegPath, args...)
-	cmd.Stdout = io.Discard
-	stderr := &limitedBuffer{limit: 16 << 10}
-	cmd.Stderr = stderr
-	if err := cmd.Run(); err != nil {
-		if ctx.Err() != nil {
-			return domain.Filmstrip{}, ctx.Err()
-		}
-		detail := strings.TrimSpace(stderr.String())
-		if detail == "" {
-			detail = err.Error()
-		}
-		return domain.Filmstrip{}, fmt.Errorf("FFmpeg thumbnail extraction failed: %s", detail)
-	}
-	if err := ctx.Err(); err != nil {
-		return domain.Filmstrip{}, err
-	}
-
-	files, err := filepath.Glob(filepath.Join(tempDir, "frame_*.jpg"))
-	if err != nil {
-		return domain.Filmstrip{}, fmt.Errorf("list generated thumbnails: %w", err)
-	}
-	sort.Strings(files)
-	if len(files) == 0 {
-		return domain.Filmstrip{}, fmt.Errorf("FFmpeg did not produce any video thumbnails")
-	}
-
-	interval := time.Duration(stepSeconds) * time.Second
+	frameCount := sampleFrameCount(duration, stepSeconds)
 	manifest := diskManifest{
 		Version:             manifestVersion,
 		SourceSize:          info.Size(),
@@ -205,21 +164,57 @@ func (g *FilmstripGenerator) Ensure(ctx context.Context, mediaPath string, durat
 		IntervalSeconds:     stepSeconds,
 		Width:               thumbnailWidth,
 		Height:              thumbnailHeight,
-		Frames:              make([]diskFrame, 0, len(files)),
+		Frames:              make([]diskFrame, 0, frameCount),
 	}
-	for index, file := range files {
-		frameInfo, statErr := os.Stat(file)
-		if statErr != nil {
-			return domain.Filmstrip{}, fmt.Errorf("inspect generated thumbnail: %w", statErr)
+
+	for index := 0; index < frameCount; index++ {
+		if err := ctx.Err(); err != nil {
+			return domain.Filmstrip{}, err
 		}
-		if frameInfo.Size() <= 0 || frameInfo.Size() > maxImageBytes {
-			return domain.Filmstrip{}, fmt.Errorf("generated thumbnail has an unexpected size: %d bytes", frameInfo.Size())
+		at := time.Duration(index*stepSeconds) * time.Second
+		if at >= duration {
+			break
 		}
+
+		outputPath := filepath.Join(tempDir, fmt.Sprintf("frame_%03d.jpg", index))
+		args := ffmpegFrameArgs(absolutePath, outputPath, at)
+		cmd := exec.CommandContext(ctx, g.ffmpegPath, args...)
+		cmd.Stdout = io.Discard
+		stderr := &limitedBuffer{limit: 16 << 10}
+		cmd.Stderr = stderr
+		if err := cmd.Run(); err != nil {
+			if ctx.Err() != nil {
+				return domain.Filmstrip{}, ctx.Err()
+			}
+			detail := strings.TrimSpace(stderr.String())
+			if detail == "" {
+				detail = err.Error()
+			}
+			return domain.Filmstrip{}, fmt.Errorf("FFmpeg thumbnail %d/%d at %s failed: %s",
+				index+1, frameCount, formatSeekTimestamp(at), detail)
+		}
+
+		frameInfo, err := os.Stat(outputPath)
+		if err != nil {
+			return domain.Filmstrip{}, fmt.Errorf("FFmpeg did not create thumbnail %d/%d: %w", index+1, frameCount, err)
+		}
+		if !frameInfo.Mode().IsRegular() || frameInfo.Size() <= 0 || frameInfo.Size() > maxImageBytes {
+			return domain.Filmstrip{}, fmt.Errorf("thumbnail %d/%d has an unexpected size: %d bytes",
+				index+1, frameCount, frameInfo.Size())
+		}
+
 		manifest.Frames = append(manifest.Frames, diskFrame{
-			File:      filepath.Base(file),
-			AtNS:      (time.Duration(index) * interval).Nanoseconds(),
+			File:      filepath.Base(outputPath),
+			AtNS:      at.Nanoseconds(),
 			SizeBytes: frameInfo.Size(),
 		})
+		if progress != nil {
+			progress(len(manifest.Frames), frameCount)
+		}
+	}
+
+	if len(manifest.Frames) == 0 {
+		return domain.Filmstrip{}, fmt.Errorf("FFmpeg did not produce any video thumbnails")
 	}
 
 	encodedManifest, err := json.Marshal(manifest)
@@ -246,6 +241,53 @@ func (g *FilmstripGenerator) Ensure(ctx context.Context, mediaPath string, durat
 	touchDirectory(targetDir)
 	_ = trimDiskCache(g.cacheRoot, targetDir, maxDiskCache)
 	return strip, nil
+}
+
+func sampleFrameCount(duration time.Duration, intervalSeconds int64) int {
+	if duration <= 0 || intervalSeconds <= 0 {
+		return 0
+	}
+	count := int(math.Ceil(duration.Seconds() / float64(intervalSeconds)))
+	if count < 1 {
+		return 1
+	}
+	if count > targetFrames {
+		return targetFrames
+	}
+	return count
+}
+
+func formatSeekTimestamp(position time.Duration) string {
+	return strconv.FormatFloat(position.Seconds(), 'f', 3, 64)
+}
+
+func ffmpegFrameArgs(mediaPath, outputPath string, position time.Duration) []string {
+	args := []string{
+		"-hide_banner",
+		"-loglevel", "error",
+		"-nostdin",
+		"-threads", "1",
+		"-filter_threads", "1",
+		"-accurate_seek",
+	}
+	if position > 0 {
+		// Input seeking jumps to the nearest indexed seek point. FFmpeg then
+		// decodes only the short GOP tail needed to reach the requested time.
+		args = append(args, "-ss", formatSeekTimestamp(position))
+	}
+	args = append(args,
+		"-i", mediaPath,
+		"-map", "0:V:0",
+		"-an",
+		"-sn",
+		"-dn",
+		"-vf", videoFilter(),
+		"-frames:v", "1",
+		"-q:v", "6",
+		"-f", "image2",
+		"-y", outputPath,
+	)
+	return args
 }
 
 func loadCachedFilmstrip(dir string, sourceInfo os.FileInfo, duration time.Duration) (domain.Filmstrip, bool) {
@@ -324,10 +366,9 @@ func sampleIntervalSeconds(duration time.Duration) int64 {
 	return step
 }
 
-func videoFilter(intervalSeconds int64) string {
+func videoFilter() string {
 	return fmt.Sprintf(
-		"fps=1/%d,scale=%d:%d:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1",
-		intervalSeconds,
+		"scale=%d:%d:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1",
 		thumbnailWidth, thumbnailHeight,
 		thumbnailWidth, thumbnailHeight,
 	)

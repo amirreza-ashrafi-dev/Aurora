@@ -244,13 +244,49 @@ func (a *App) chooseStartOver() {
 	a.status = "Playing from the beginning"
 }
 
-func (a *App) updateTimeline(dragging, changed bool) {
+func (a *App) updateTimeline(dragging, changed bool, canceled ...bool) {
 	wasScrubbing := a.scrubbing
 	a.scrubbing = dragging
-	if changed && a.player != nil {
-		if err := a.player.Seek(a.state.Position); err != nil { a.status = err.Error() }
+
+	// A pointer cancellation must restore the last committed playback
+	// position rather than seeking to a preview the user did not release.
+	if len(canceled) > 0 && canceled[0] {
+		a.timelinePreviewPosition = a.state.Position
+		return
 	}
-	if !dragging && (wasScrubbing || changed) { a.scheduleCurrentProgressSave() }
+
+	// Keep the pointer's preview position separate from the actual playback
+	// position. A precise MPV seek can be expensive; issue it once when the
+	// user releases the slider, not for every intermediate drag update.
+	if dragging {
+		return
+	}
+	if wasScrubbing || changed {
+		a.seekToPosition(a.timelinePreviewPosition)
+	}
+}
+
+// seekToPosition commits a preview position to libmpv and persists the
+// resulting playback position once. It is shared by the timeline and filmstrip.
+func (a *App) seekToPosition(position float64) {
+	if a == nil || a.player == nil || math.IsNaN(position) || math.IsInf(position, 0) {
+		return
+	}
+	position = clampPlaybackPosition(position, a.state.Duration)
+	if err := a.player.Seek(position); err != nil {
+		a.status = err.Error()
+		a.timelinePreviewPosition = a.state.Position
+		if a.filmstripOpen {
+			a.filmstripPreviewPosition = a.state.Position
+		}
+		return
+	}
+	a.state.Position = position
+	a.timelinePreviewPosition = position
+	if a.filmstripOpen {
+		a.filmstripPreviewPosition = position
+	}
+	a.scheduleCurrentProgressSave()
 }
 
 // resumePrompt keeps the ordinary-window Smart Resume choice inside the

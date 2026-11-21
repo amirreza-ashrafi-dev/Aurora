@@ -7,6 +7,7 @@ import (
 
 	mygo "github.com/egoist/mygo"
 
+	"my-go/internal/adapters/ffmpeg"
 	"my-go/internal/adapters/history"
 	"my-go/internal/adapters/mpv"
 	"my-go/internal/adapters/subtitles"
@@ -44,7 +45,9 @@ func Run() error {
 		platform.Close()
 		return fmt.Errorf("initialize subtitle preferences: %w", err)
 	}
-	app := mygopresentation.New(platform, playerFactory, progressRepository, subtitleRepository, subtitleRepository)
+	resourcesDir, _ := mygo.App.Path(mygo.PathResources)
+	filmstripGenerator := ffmpeg.NewFilmstripGenerator(resourcesDir)
+	app := mygopresentation.New(platform, playerFactory, progressRepository, subtitleRepository, subtitleRepository, filmstripGenerator)
 	defer app.Close()
 	if err := app.Run(); err != nil {
 		return fmt.Errorf("run Aurora Player: %w", err)

@@ -13,6 +13,7 @@ import (
 const (
 	controllerWidth  = 896
 	controllerHeight = 194
+	filmstripControllerHeight = 320
 	controllerBottom = 32
 )
 
@@ -116,19 +117,37 @@ func (a *App) createFullscreenController() {
 		log.Println("controller: main window has no usable content bounds yet; deferring")
 		return
 	}
+	height := controllerHeight
+	if a.filmstripOpen {
+		height = filmstripControllerHeight
+	}
 	a.controller = mygo.NewFlyout(mygo.FlyoutOptions{
 		Parent:    a.win,
 		Anchor:    anchor,
 		Placement: mygo.PlacementTop,
 		Gap:       0,
 		Width:     controllerWidth,
-		Height:    controllerHeight,
+		Height:    height,
 		Focusable: false,
 		Hidden:    true,
 		Content:   ui.View(a.fullscreenControls),
 	})
 	a.controllerAnchor, a.hasControllerAnchor = anchor, true
 	a.logDiagnostics("after-create-controller-flyout")
+}
+
+
+// updateFullscreenControllerSize expands the floating controller when the
+// thumbnail filmstrip is visible and restores its normal size when closed.
+func (a *App) updateFullscreenControllerSize() {
+	if a == nil || a.controller == nil || a.controller.IsDestroyed() {
+		return
+	}
+	height := controllerHeight
+	if a.filmstripOpen {
+		height = filmstripControllerHeight
+	}
+	a.controller.SetSize(controllerWidth, height)
 }
 
 func (a *App) updateControllerBounds() {

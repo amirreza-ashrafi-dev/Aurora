@@ -35,6 +35,7 @@ func (a *App) fullscreenControls(c *ui.Context) {
 					a.toggleCinematicMode()
 				}
 				a.fullscreenSubtitleStudioFlyoutButton(c)
+				a.filmstripToggleButton(c)
 				if a.win != nil && a.win.IsFullScreen() {
 					if auroraQuietButton(c, "Exit fullscreen").Clicked() {
 						a.exitFullscreen()
@@ -47,11 +48,19 @@ func (a *App) fullscreenControls(c *ui.Context) {
 				maxDuration = 1
 			}
 			ui.Row(c).Gap(12).Children(func() {
-				ui.Text(c, formatTime(a.state.Position)).Width(48).FontSize(10).TextColor(ui.Hex(auroraMuted))
-				timeline := ui.Slider(c, &a.state.Position, 0, maxDuration).Fill().Height(24)
-				a.updateTimeline(timeline.Dragging(), timeline.Changed())
+				displayPosition := a.state.Position
+				if a.scrubbing {
+					displayPosition = a.timelinePreviewPosition
+				}
+				ui.Text(c, formatTime(displayPosition)).Width(48).FontSize(10).TextColor(ui.Hex(auroraMuted))
+				if !a.scrubbing {
+					a.timelinePreviewPosition = a.state.Position
+				}
+				timeline := ui.Slider(c, &a.timelinePreviewPosition, 0, maxDuration).Fill().Height(24)
+				a.updateTimeline(timeline.Dragging(), timeline.Changed(), timeline.PressCanceled())
 				ui.Text(c, formatTime(a.state.Duration)).Width(48).FontSize(10).TextColor(ui.Hex(auroraMuted))
 			})
+			a.filmstripView(c)
 
 			ui.Row(c).Gap(9).Children(func() {
 				if auroraQuietButton(c, "⏮ Previous").Clicked() {

@@ -156,6 +156,29 @@ func (a *App) resetFilmstripForMedia() {
 	a.releaseFilmstripBitmaps()
 }
 
+
+// abandonFilmstripAfterShutdown cancels background work and drops references
+// after the MyGo event loop has stopped. It deliberately does not call
+// Bitmap.ReleasePixels here: that API must be used on the UI thread.
+func (a *App) abandonFilmstripAfterShutdown() {
+	if a == nil {
+		return
+	}
+	a.filmstripOpen = false
+	if a.filmstripGenerationCancel != nil {
+		a.filmstripGenerationCancel()
+		a.filmstripGenerationCancel = nil
+	}
+	a.filmstripGenerationToken++
+	a.filmstripLoadToken++
+	a.filmstripGenerating = false
+	a.filmstripGeneratingFor = ""
+	a.filmstripLoadInFlight = false
+	a.filmstripDragging = false
+	a.filmstripBitmaps = nil
+	a.filmstripBitmapClock = 0
+}
+
 func (a *App) closeFilmstrip() {
 	if a == nil {
 		return

@@ -28,10 +28,45 @@ func TestSampleIntervalSecondsBoundsFilmstripDensity(t *testing.T) {
 }
 
 func TestVideoFilterBoundsOutputDimensions(t *testing.T) {
-	got := videoFilter(30)
-	want := "fps=1/30,scale=160:90:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=160:90:(ow-iw)/2:(oh-ih)/2,setsar=1"
+	got := videoFilter()
+	want := "scale=160:90:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=160:90:(ow-iw)/2:(oh-ih)/2,setsar=1"
 	if got != want {
-		t.Fatalf("videoFilter(30) = %q, want %q", got, want)
+		t.Fatalf("videoFilter() = %q, want %q", got, want)
+	}
+}
+
+func TestSampleFrameCountNeverExceedsTarget(t *testing.T) {
+	tests := []struct {
+		name string
+		duration time.Duration
+		interval int64
+		want int
+	}{
+		{name: "short clip", duration: 3 * time.Second, interval: 1, want: 3},
+		{name: "two hour movie", duration: 2 * time.Hour, interval: 153, want: 48},
+		{name: "invalid interval", duration: time.Minute, interval: 0, want: 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := sampleFrameCount(test.duration, test.interval); got != test.want {
+				t.Fatalf("sampleFrameCount() = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+func TestFFmpegFrameArgsUseInputSeekBeforeSource(t *testing.T) {
+	args := ffmpegFrameArgs("movie.mkv", "frame.jpg", 90*time.Second)
+	ss, input := -1, -1
+	for i, arg := range args {
+		if arg == "-ss" { ss = i }
+		if arg == "-i" { input = i }
+	}
+	if ss < 0 || input < 0 || ss >= input {
+		t.Fatalf("expected input seek before source input, args: %#v", args)
+	}
+	if got := args[ss+1]; got != "90.000" {
+		t.Fatalf("seek timestamp = %q, want 90.000", got)
 	}
 }
 

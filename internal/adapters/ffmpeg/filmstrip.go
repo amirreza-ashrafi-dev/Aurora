@@ -249,6 +249,7 @@ func (g *FilmstripGenerator) EnsureProgressive(
 
 		args := ffmpegFrameArgs(absolutePath, outputPath, at)
 		cmd := exec.CommandContext(workerCtx, g.ffmpegPath, args...)
+		configureFFmpegCommand(cmd)
 		cmd.Stdout = io.Discard
 		stderr := &limitedBuffer{limit: 16 << 10}
 		cmd.Stderr = stderr

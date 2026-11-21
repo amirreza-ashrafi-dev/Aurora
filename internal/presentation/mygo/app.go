@@ -43,6 +43,8 @@ type App struct {
 	filmstripManifest domain.Filmstrip
 	filmstripManifestPath string
 	filmstripGenerating bool
+	filmstripProgressCompleted int
+	filmstripProgressTotal int
 	filmstripGeneratingFor string
 	filmstripGenerationAttemptedFor string
 	filmstripError string

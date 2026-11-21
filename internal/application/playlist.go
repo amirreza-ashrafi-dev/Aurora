@@ -48,9 +48,9 @@ func FilterNewMedia(existing, candidates []string) AddSummary {
 			continue
 		}
 
-		if resolved, resolveErr := filepath.EvalSymlinks(abs); resolveErr == nil {
-			abs = resolved
-		}
+		// Normalize only the comparison key. Keep the caller's absolute path
+		// for playback: EvalSymlinks may rewrite Windows 8.3 paths to their
+		// long-name form, even though both identify the same file.
 		key := mediaPathKey(abs)
 		_, duplicate := seenPaths[key]
 		if !duplicate {
@@ -91,7 +91,6 @@ func mediaPathKey(path string) string {
 	}
 	return key
 }
-
 
 // RemovePlaylistEntry returns a copy of queue without removeIndex and the
 // resulting current index. If the current entry is removed, the next entry is

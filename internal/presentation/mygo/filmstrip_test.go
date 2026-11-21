@@ -112,6 +112,35 @@ func TestVisibleFilmstripFramesKeepsPinnedWindow(t *testing.T) {
 }
 
 
+func TestFilmstripFrameIndexAtXUsesActualTileGaps(t *testing.T) {
+	const rowWidth = float32(600)
+	const padding = float32(3)
+	const gap = float32(3)
+	const count = 9
+	contentWidth := rowWidth - 2*padding
+	tileWidth := (contentWidth - gap*float32(count-1)) / count
+	pitch := tileWidth + gap
+
+	for i := 0; i < count; i++ {
+		center := padding + float32(i)*pitch + tileWidth/2
+		if got := filmstripFrameIndexAtX(center, rowWidth, count); got != i {
+			t.Errorf("tile %d center mapped to index %d", i, got)
+		}
+	}
+	if got := filmstripFrameIndexAtX(rowWidth-padding, rowWidth, count); got != count-1 {
+		t.Fatalf("rightmost tile edge mapped to index %d, want %d", got, count-1)
+	}
+	if got := filmstripFrameIndexAtX(rowWidth, rowWidth, count); got != count-1 {
+		t.Fatalf("row's right boundary mapped to index %d, want %d", got, count-1)
+	}
+	if got := filmstripFrameIndexAtX(0, rowWidth, count); got != 0 {
+		t.Fatalf("row's left boundary mapped to index %d, want 0", got)
+	}
+	if got := filmstripFrameIndexAtX(10, rowWidth, 0); got != -1 {
+		t.Fatalf("empty strip mapped to index %d, want -1", got)
+	}
+}
+
 func TestFilmstripShiftWindowStart(t *testing.T) {
 	tests := []struct {
 		name        string

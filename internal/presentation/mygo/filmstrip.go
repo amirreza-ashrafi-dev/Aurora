@@ -344,6 +344,36 @@ func (a *App) currentFilmstripWindowStart() int {
 
 // shiftFilmstripWindow browses without changing playback or the preview seek
 // position. The next pointer movement over the strip selects the frame under it.
+// filmstripFrameIndexAtX maps a pointer position to the actual tile layout.
+// Unlike dividing the whole row into equal fractions, this accounts for the
+// 3-DIP gaps between the nine tiles. A pointer on the final tile therefore
+// always selects the final frame rather than a neighboring logical slot.
+func filmstripFrameIndexAtX(x, rowWidth float32, frameCount int) int {
+	if frameCount <= 0 {
+		return -1
+	}
+	const padding = float32(3)
+	const gap = float32(3)
+	contentWidth := rowWidth - 2*padding
+	if contentWidth <= 0 {
+		return 0
+	}
+	contentX := max(float32(0), min(x-padding, contentWidth))
+	tileWidth := (contentWidth - gap*float32(frameCount-1)) / float32(frameCount)
+	if tileWidth <= 0 {
+		return filmstripFrameIndexAtRatio(float64(contentX/contentWidth), frameCount)
+	}
+	pitch := tileWidth + gap
+	index := int(math.Floor(float64(contentX / pitch)))
+	index = max(0, min(index, frameCount-1))
+	offset := contentX - float32(index)*pitch
+	// A gap belongs to whichever neighboring tile center is nearer.
+	if index < frameCount-1 && offset > tileWidth && offset-tileWidth > gap/2 {
+		index++
+	}
+	return index
+}
+
 func (a *App) shiftFilmstripWindow(steps int) {
 	if a == nil || steps == 0 {
 		return
@@ -565,6 +595,7 @@ func (a *App) filmstripView(c *ui.Context) {
 				}
 
 				pointerActive := over || pressed || a.filmstripDragging
+				hoveredIndex := -1
 				if strip.PressCanceled() {
 					a.filmstripDragging = false
 					a.filmstripHoverPinned = false
@@ -584,16 +615,11 @@ func (a *App) filmstripView(c *ui.Context) {
 
 					frames := a.visibleFilmstripFrames()
 					if pointerActive && len(frames) > 0 && bounds.W > 6 {
-						// PointerPosition is local to the row's outer bounds.
-						// Exclude the row's 3-DIP left/right padding so the
-						// first and last thumbnail centers match the pointer.
-						contentWidth := bounds.W - 6
-						contentX := x - 3
-						ratio := float64(contentX / contentWidth)
-						index := filmstripFrameIndexAtRatio(ratio, len(frames))
-						// Selecting the frame under the pointer keeps the visual
-						// focus, timestamp, and eventual seek on the same frame.
-						a.filmstripPreviewPosition = frames[index].At.Seconds()
+						// Keep the exact tile index for drawing its hover border.
+						// The preview timestamp remains the source for the time
+						// label and the single seek committed on release.
+						hoveredIndex = filmstripFrameIndexAtX(x, bounds.W, len(frames))
+						a.filmstripPreviewPosition = frames[hoveredIndex].At.Seconds()
 					} else if !pointerActive {
 						// Keep the browsed window in place when the pointer moves
 						// to the navigation buttons; only restore the preview time.
@@ -609,12 +635,18 @@ func (a *App) filmstripView(c *ui.Context) {
 				frames := a.visibleFilmstripFrames()
 				a.requestVisibleFilmstripBitmaps(frames)
 				selected := nearestFilmstripFrame(frames, a.filmstripPreviewPosition)
-				hasSelection := len(frames) > 0 && (pointerActive ||
+				hasPlaybackSelection := len(frames) > 0 &&
 					a.filmstripPreviewPosition >= frames[0].At.Seconds() &&
-						a.filmstripPreviewPosition <= frames[len(frames)-1].At.Seconds())
+					a.filmstripPreviewPosition <= frames[len(frames)-1].At.Seconds()
 				strip.Children(func() {
-					for _, frame := range frames {
-						highlight := hasSelection && frame.At == selected.At
+					for i, frame := range frames {
+						// While the pointer is over the strip, use its exact tile
+						// index. Do not round-trip through float seconds and a
+						// nearest-frame search: the border must match the tile hit.
+						highlight := pointerActive && i == hoveredIndex
+						if !pointerActive {
+							highlight = hasPlaybackSelection && frame.At == selected.At
+						}
 						border := auroraBorderSoft
 						if highlight {
 							border = auroraAccent

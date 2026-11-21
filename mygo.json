@@ -5,7 +5,8 @@
   "out": "build",
   "resources": [
     "third_party/mpv/libmpv-2.dll",
-    "third_party/mpv/d3dcompiler_43.dll"
+    "third_party/mpv/d3dcompiler_43.dll",
+    "third_party/ffmpeg/ffmpeg.exe"
   ],
   "icon": "resources/icon.png"
 }

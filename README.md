@@ -21,10 +21,11 @@ The goal is simple: make watching videos feel effortless.
 - Video playback powered by libmpv
 - Playlist and playback controls, including removing individual queue items
 - Fullscreen playback with an auto-hiding floating controller
-- **Cinematic Mode** for distraction-free windowed or fullscreen viewing
+- **Cinematic Mode** for distraction-free windowed or fullscreen playback
 - **Smart Resume** offers to continue a video from its last saved position or start over
 - External subtitle loading, strict filename matching, per-video external subtitle restoration, drag-and-drop, custom text/outline colors, and language-specific appearance profiles
 - Keyboard shortcuts for playback, seeking, volume, fullscreen, and Cinematic Mode
+- On-demand visual timeline filmstrip with persistent FFmpeg-generated thumbnails and bounded in-memory previews
 
 ### Cinematic Mode
 
@@ -45,6 +46,7 @@ When you open a video with saved progress, Aurora offers **Resume** or **Start o
 | Go | Main programming language |
 | MyGo | Desktop application framework |
 | libmpv | Media playback engine |
+| FFmpeg | Background thumbnail extraction for the timeline filmstrip |
 | purego | Calling native Windows APIs |
 | Win32 API | Windows video hosting and integration |
 
@@ -54,20 +56,41 @@ When you open a video with saved progress, Aurora offers **Resume** or **Start o
 - Go 1.27.3 or a compatible version
 - MyGo v0.9.2
 - libmpv runtime files
+- Git LFS for the large Windows FFmpeg runtime file
 
 ## Building from Source
 
-1. Clone or download the project.
+1. Clone the repository with Git LFS installed and initialized.
 2. Make sure the required Go dependencies are installed.
 3. Check that the MPV runtime files are available in `third_party/mpv`.
-4. Open a terminal in the project directory.
-5. Run:
+4. Open PowerShell in the project directory and run the FFmpeg setup script:
+
+```powershell
+git lfs install
+.\scripts\setup-ffmpeg.ps1
+```
+
+The script downloads the current Windows x64 LGPL static build from BtbN FFmpeg Builds, verifies its SHA-256 checksum against the release checksum file, checks that `ffmpeg.exe` runs, and copies the build's license/readme files into `third_party/ffmpeg/licenses`. Use `-Force` to replace an existing executable.
+
+5. Build Aurora:
 
 ```powershell
 go tool mygo build -platform windows/amd64
 ```
 
-The build output is configured in `mygo.json`.
+The build output and packaged runtime resources are configured in `mygo.json`. FFmpeg is used only for filmstrip thumbnails; normal playback remains powered by libmpv.
+
+### Updating the FFmpeg binary in Git LFS
+
+The executable is tracked by Git LFS through `.gitattributes`, not as a regular Git blob. After running the setup script, review the license files and then stage and push the resource:
+
+```powershell
+git add third_party/ffmpeg/ffmpeg.exe third_party/ffmpeg/licenses third_party/ffmpeg/BUILD-INFO.txt
+git commit -m "Add FFmpeg runtime via Git LFS"
+git push
+```
+
+The FFmpeg build's LGPL label does not by itself establish that redistribution is compliant. Review the exact build configuration and include all notices and source materials required by its license.
 
 ## Project Status
 
@@ -91,6 +114,7 @@ A media library and more advanced features may be considered in future versions.
 - [x] Add Cinematic Mode
 - [ ] Complete Subtitle Studio (per-video subtitle matching and language profile editor)
 - [ ] Add more playback options
+- [x] Add visual timeline thumbnail filmstrip
 - [ ] Improve accessibility and usability
 - [ ] Explore support for additional platforms
 

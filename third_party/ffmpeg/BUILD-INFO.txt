@@ -1,0 +1,8 @@
+﻿FFmpeg source: https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/tag/latest
+Asset: ffmpeg-master-latest-win64-lgpl.zip
+SHA-256: 38ee02ad0043248c31d0697a91b57a7361cbe62cf9e531cf64042e6886dbbcbd
+Downloaded: 2026-11-21T12:01:04Z
+Build variant: BtbN Windows x64 LGPL static
+
+Review the included license files and the exact FFmpeg build configuration before redistribution.
+The LGPL label alone is not a substitute for checking the applicable license obligations.

@@ -29,19 +29,19 @@ type Player struct {
 	setPropertyString func(unsafe.Pointer, string, string) int32
 	getProperty       func(unsafe.Pointer, string, int32, unsafe.Pointer) int32
 	terminateDestroy  func(unsafe.Pointer)
-	errorString       func(int32) uintptr
-	getPropertyString func(unsafe.Pointer, string) uintptr
-	free              func(uintptr)
+	errorString       func(int32) unsafe.Pointer
+	getPropertyString func(unsafe.Pointer, string) unsafe.Pointer
+	free              func(unsafe.Pointer)
 
 	runtimeVideoOutputReinit bool
 	videoOutputReleased      bool
 }
 
-func mpvErrorText(ptr uintptr) string {
-	if ptr == 0 {
+func mpvErrorText(ptr unsafe.Pointer) string {
+	if ptr == nil {
 		return "unknown mpv error"
 	}
-	return windows.BytePtrToString((*byte)(unsafe.Pointer(ptr)))
+	return windows.BytePtrToString((*byte)(ptr))
 }
 
 func (p *Player) readMPVVersion() string {
@@ -49,11 +49,11 @@ func (p *Player) readMPVVersion() string {
 		return ""
 	}
 	ptr := p.getPropertyString(p.ctx, "mpv-version")
-	if ptr == 0 {
+	if ptr == nil {
 		return ""
 	}
 	defer p.free(ptr)
-	return windows.BytePtrToString((*byte)(unsafe.Pointer(ptr)))
+	return windows.BytePtrToString((*byte)(ptr))
 }
 
 // SupportsRuntimeVideoOutputRelease reports whether this MPV version rebuilds
@@ -381,9 +381,9 @@ func (p *Player) RemoveSelectedExternalSubtitle() error {
 func (p *Player) getPropertyStringValue(name string) (string, error) {
 	if p == nil || p.ctx == nil { return "", fmt.Errorf("mpv is not initialized") }
 	ptr := p.getPropertyString(p.ctx, name)
-	if ptr == 0 { return "", fmt.Errorf("mpv property %q is unavailable", name) }
+	if ptr == nil { return "", fmt.Errorf("mpv property %q is unavailable", name) }
 	defer p.free(ptr)
-	return windows.BytePtrToString((*byte)(unsafe.Pointer(ptr))), nil
+	return windows.BytePtrToString((*byte)(ptr)), nil
 }
 
 // SetSubtitleVisibility hides or shows subtitles without changing the
@@ -436,11 +436,11 @@ func (p *Player) ActiveSubtitleLanguage() (string, error) {
 		return "", fmt.Errorf("mpv is not initialized")
 	}
 	ptr := p.getPropertyString(p.ctx, "current-tracks/sub/lang")
-	if ptr == 0 {
+	if ptr == nil {
 		return "", nil
 	}
 	defer p.free(ptr)
-	return windows.BytePtrToString((*byte)(unsafe.Pointer(ptr))), nil
+	return windows.BytePtrToString((*byte)(ptr)), nil
 }
 
 func (p *Player) setSubtitleProperty(name, value string) error {

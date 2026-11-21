@@ -1,6 +1,7 @@
 package presentation
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -36,6 +37,31 @@ type App struct {
 	thumbnailEncodedBytes map[string]uint64
 	thumbnailCaptureTokens map[string]uint64
 	thumbnailCaptureSequence uint64
+
+	filmstripGenerator application.FilmstripGenerator
+	filmstripOpen bool
+	filmstripManifest domain.Filmstrip
+	filmstripManifestPath string
+	filmstripGenerating bool
+	filmstripProgressCompleted int
+	filmstripProgressTotal int
+	filmstripGeneratingFor string
+	filmstripGenerationAttemptedFor string
+	filmstripError string
+	filmstripGenerationCancel context.CancelFunc
+	filmstripGenerationToken uint64
+	filmstripPreviewPosition float64
+	filmstripDragging bool
+	filmstripHoverPinned bool
+	filmstripHoverStart int
+	filmstripSelectedFrame int
+	filmstripHasSelectedFrame bool
+	filmstripWheelRemainder float32
+	filmstripBitmaps map[string]*filmstripBitmap
+	filmstripBitmapClock uint64
+	filmstripLoadInFlight bool
+	filmstripLoadToken uint64
+	timelinePreviewPosition float64
 
 	platform      application.NativePlatform
 	videoHWND     uintptr
@@ -106,8 +132,8 @@ type App struct {
 
 // New creates the presentation controller. The player is created later, after
 // MyGo has supplied the native window handle for the embedded MPV surface.
-func New(platform application.NativePlatform, playerFactory application.PlayerFactory, history application.ProgressRepository, subtitlePreferences application.SubtitlePreferencesRepository, subtitleAssignments application.SubtitleAssignmentRepository) *App {
-	return &App{
+func New(platform application.NativePlatform, playerFactory application.PlayerFactory, history application.ProgressRepository, subtitlePreferences application.SubtitlePreferencesRepository, subtitleAssignments application.SubtitleAssignmentRepository, filmstripGenerators ...application.FilmstripGenerator) *App {
+	app := &App{
 		platform:       platform,
 		playerFactory:  playerFactory,
 		history:        history,
@@ -125,6 +151,10 @@ func New(platform application.NativePlatform, playerFactory application.PlayerFa
 		status:         "Starting Aurora Player...",
 		state:          domain.PlaybackState{Volume: 100},
 	}
+	if len(filmstripGenerators) > 0 {
+		app.filmstripGenerator = filmstripGenerators[0]
+	}
+	return app
 }
 
 // Run starts MyGo and installs the native player window when the app is ready.

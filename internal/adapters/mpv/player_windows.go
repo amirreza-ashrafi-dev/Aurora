@@ -29,19 +29,19 @@ type Player struct {
 	setPropertyString func(unsafe.Pointer, string, string) int32
 	getProperty       func(unsafe.Pointer, string, int32, unsafe.Pointer) int32
 	terminateDestroy  func(unsafe.Pointer)
-	errorString       func(int32) uintptr
-	getPropertyString func(unsafe.Pointer, string) uintptr
-	free              func(uintptr)
+	errorString       func(int32) unsafe.Pointer
+	getPropertyString func(unsafe.Pointer, string) unsafe.Pointer
+	free              func(unsafe.Pointer)
 
 	runtimeVideoOutputReinit bool
 	videoOutputReleased      bool
 }
 
-func mpvErrorText(ptr uintptr) string {
-	if ptr == 0 {
+func mpvErrorText(ptr unsafe.Pointer) string {
+	if ptr == nil {
 		return "unknown mpv error"
 	}
-	return windows.BytePtrToString((*byte)(unsafe.Pointer(ptr)))
+	return windows.BytePtrToString((*byte)(ptr))
 }
 
 func (p *Player) readMPVVersion() string {
@@ -49,7 +49,7 @@ func (p *Player) readMPVVersion() string {
 		return ""
 	}
 	ptr := p.getPropertyString(p.ctx, "mpv-version")
-	if ptr == 0 {
+	if ptr == nil {
 		return ""
 	}
 	defer p.free(ptr)

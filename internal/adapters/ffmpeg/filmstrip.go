@@ -171,7 +171,7 @@ func (g *FilmstripGenerator) EnsureWithProgress(ctx context.Context, mediaPath s
 		if err := ctx.Err(); err != nil {
 			return domain.Filmstrip{}, err
 		}
-		at := time.Duration(index*stepSeconds) * time.Second
+		at := time.Duration(int64(index)*stepSeconds) * time.Second
 		if at >= duration {
 			break
 		}

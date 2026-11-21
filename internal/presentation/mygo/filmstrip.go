@@ -241,13 +241,24 @@ func (a *App) closeFilmstrip() {
 		return
 	}
 	a.filmstripOpen = false
+	wasGenerating := a.filmstripGenerating
 	if a.filmstripGenerationCancel != nil {
 		a.filmstripGenerationCancel()
 		a.filmstripGenerationCancel = nil
 	}
 	a.filmstripGenerationToken++
 	a.filmstripGenerating = false
+	a.filmstripProgressCompleted = 0
+	a.filmstripProgressTotal = 0
 	a.filmstripGeneratingFor = ""
+	if wasGenerating {
+		// A progressive manifest points at files in the generation directory.
+		// Cancellation removes that directory, so never reuse these paths when
+		// the user opens the filmstrip again.
+		a.filmstripManifest = domain.Filmstrip{}
+		a.filmstripManifestPath = ""
+		a.filmstripGenerationAttemptedFor = ""
+	}
 	a.filmstripDragging = false
 	a.filmstripHoverPinned = false
 	a.filmstripHoverStart = 0

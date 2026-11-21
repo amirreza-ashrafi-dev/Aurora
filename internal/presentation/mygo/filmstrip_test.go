@@ -325,3 +325,36 @@ func TestProgressiveFilmstripKeepsPendingSlotsInTheirTimelinePositions(t *testin
 		t.Fatalf("generated thumbnail timestamp = %s, want 4m", visible[filmstripVisibleFrames/2].At)
 	}
 }
+
+func TestCloseFilmstripDiscardsIncompleteProgressiveManifest(t *testing.T) {
+	cancelled := false
+	app := &App{
+		filmstripOpen: true,
+		filmstripGenerating: true,
+		filmstripManifest: domain.Filmstrip{
+			Duration: time.Minute,
+			Frames: []domain.FilmstripFrame{
+				{At: 0, Path: "temporary/frame_000.jpg"},
+				{At: 10 * time.Second},
+			},
+		},
+		filmstripManifestPath: "movie.mkv",
+		filmstripGenerationAttemptedFor: "movie.mkv",
+		filmstripProgressCompleted: 1,
+		filmstripProgressTotal: 6,
+		filmstripGenerationCancel: func() { cancelled = true },
+	}
+	app.closeFilmstrip()
+	if !cancelled {
+		t.Fatal("closing the filmstrip did not cancel generation")
+	}
+	if app.filmstripGenerating || app.filmstripManifestPath != "" || len(app.filmstripManifest.Frames) != 0 {
+		t.Fatal("closing during generation retained an incomplete manifest")
+	}
+	if app.filmstripProgressCompleted != 0 || app.filmstripProgressTotal != 0 {
+		t.Fatal("closing during generation retained stale progress")
+	}
+	if app.filmstripGenerationAttemptedFor != "" {
+		t.Fatal("closing during generation should allow a fresh attempt")
+	}
+}

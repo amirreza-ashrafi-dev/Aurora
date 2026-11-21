@@ -25,6 +25,7 @@ The goal is simple: make watching videos feel effortless.
 - **Smart Resume** offers to continue a video from its last saved position or start over
 - External subtitle loading, strict filename matching, per-video external subtitle restoration, drag-and-drop, custom text/outline colors, and language-specific appearance profiles
 - Keyboard shortcuts for playback, seeking, volume, fullscreen, and Cinematic Mode
+- On-demand visual timeline filmstrip with progressive FFmpeg thumbnail generation and a persistent disk cache
 
 ### Cinematic Mode
 
@@ -38,6 +39,14 @@ Load external SRT, ASS/SSA, WebVTT, or SUB subtitle files while a video is playi
 
 When you open a video with saved progress, Aurora offers **Resume** or **Start over**. Progress is stored locally in a versioned JSON file under your Windows user configuration directory. The history is limited to 500 videos and 1 MiB; the least recently watched entries are removed when a limit is reached. Automatic queue playback always starts at the beginning and does not interrupt playback with a resume prompt.
 
+### Timeline Thumbnail Filmstrip
+
+Open the filmstrip from the playback controls to browse preview frames across the current video. Up to 48 small thumbnails are generated on demand, with frames nearest the current playhead prioritized and displayed progressively as they become ready. Previous / Next controls and the mouse wheel browse through the strip.
+
+Dragging the timeline or choosing a thumbnail changes the preview position without repeatedly seeking the video. Aurora commits one precise seek when the interaction is released; canceling a drag restores the committed playback position. Completed thumbnails are kept in a persistent cache, while decoded UI bitmaps are kept within a small memory limit.
+
+FFmpeg is used only for this optional feature. Normal playback continues to use libmpv, so a missing FFmpeg executable does not prevent the player from opening or playing videos.
+
 ## Technology
 
 | Technology | Purpose |
@@ -45,6 +54,7 @@ When you open a video with saved progress, Aurora offers **Resume** or **Start o
 | Go | Main programming language |
 | MyGo | Desktop application framework |
 | libmpv | Media playback engine |
+| FFmpeg | Background extraction of timeline preview thumbnails |
 | purego | Calling native Windows APIs |
 | Win32 API | Windows video hosting and integration |
 
@@ -53,21 +63,27 @@ When you open a video with saved progress, Aurora offers **Resume** or **Start o
 - Windows 11 (64-bit)
 - Go 1.27.3 or a compatible version
 - MyGo v0.9.2
-- libmpv runtime files
+- libmpv runtime files and the bundled FFmpeg executable (Git LFS)
 
 ## Building from Source
 
-1. Clone or download the project.
-2. Make sure the required Go dependencies are installed.
-3. Check that the MPV runtime files are available in `third_party/mpv`.
-4. Open a terminal in the project directory.
-5. Run:
+1. Clone the project.
+2. Install Git LFS and run `git lfs install` followed by `git lfs pull` to download the MPV runtime DLLs and FFmpeg executable.
+3. Install the Go version declared in `go.mod` and download Go dependencies with `go mod download`.
+4. Run the test suite with `go test ./...`.
+5. Build the Windows application:
 
 ```powershell
 go tool mygo build -platform windows/amd64
 ```
 
-The build output is configured in `mygo.json`.
+The build output and packaged resources are configured in `mygo.json`. The MPV DLLs and bundled FFmpeg executable must be real LFS-downloaded files, not the small LFS pointer text files.
+
+To install or refresh FFmpeg separately, run `.\scripts\setup-ffmpeg.ps1` from PowerShell. The script downloads the Windows x64 build, verifies its SHA-256 against the release checksum file, checks that the executable runs, and preserves the available license/readme files. Use `-Force` when replacing an existing executable. Review the exact build configuration and license obligations before redistributing Aurora with FFmpeg.
+
+## Developer Documentation
+
+New contributors can start with the [Developer Guide](docs/DEVELOPER_GUIDE.md), then use the [Source Reference](docs/SOURCE_REFERENCE.md) for a file-by-file and method-by-method explanation. The shorter [Architecture](ARCHITECTURE.md) and [Design System](DESIGN_SYSTEM.md) documents remain available for layer boundaries and visual rules.
 
 ## Project Status
 
@@ -91,6 +107,7 @@ A media library and more advanced features may be considered in future versions.
 - [x] Add Cinematic Mode
 - [ ] Complete Subtitle Studio (per-video subtitle matching and language profile editor)
 - [ ] Add more playback options
+- [x] Add visual timeline thumbnail filmstrip
 - [ ] Improve accessibility and usability
 - [ ] Explore support for additional platforms
 

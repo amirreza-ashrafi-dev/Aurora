@@ -41,6 +41,76 @@ func TestVisibleFilmstripFramesCentersAroundPreview(t *testing.T) {
 	}
 }
 
+
+func TestFilmstripWindowStartCentersOnPreview(t *testing.T) {
+	if got := filmstripWindowStart(48, 24, 47); got != 20 {
+		t.Fatalf("filmstripWindowStart() = %d, want 20", got)
+	}
+	if got := filmstripWindowStart(48, 0, 47); got != 0 {
+		t.Fatalf("filmstripWindowStart() at start = %d, want 0", got)
+	}
+	if got := filmstripWindowStart(48, 47, 47); got != 39 {
+		t.Fatalf("filmstripWindowStart() at end = %d, want 39", got)
+	}
+}
+
+func TestFilmstripFramesAtStartClampsWindow(t *testing.T) {
+	frames := make([]domain.FilmstripFrame, 12)
+	for i := range frames {
+		frames[i].At = time.Duration(i) * time.Second
+	}
+	got := filmstripFramesAtStart(frames, 99)
+	if len(got) != filmstripVisibleFrames {
+		t.Fatalf("visible count = %d, want %d", len(got), filmstripVisibleFrames)
+	}
+	if got[0].At != 3*time.Second || got[len(got)-1].At != 11*time.Second {
+		t.Fatalf("unexpected clamped window: %s–%s", got[0].At, got[len(got)-1].At)
+	}
+}
+
+func TestFilmstripFrameIndexAtRatio(t *testing.T) {
+	tests := []struct {
+		name string
+		ratio float64
+		count int
+		want int
+	}{
+		{name: "left edge", ratio: 0, count: 9, want: 0},
+		{name: "first tile", ratio: 0.05, count: 9, want: 0},
+		{name: "middle tile", ratio: 0.5, count: 9, want: 4},
+		{name: "right edge", ratio: 1, count: 9, want: 8},
+		{name: "outside right", ratio: 2, count: 9, want: 8},
+		{name: "empty strip", ratio: 0.5, count: 0, want: -1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := filmstripFrameIndexAtRatio(test.ratio, test.count); got != test.want {
+				t.Fatalf("filmstripFrameIndexAtRatio() = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
+func TestVisibleFilmstripFramesKeepsPinnedWindow(t *testing.T) {
+	frames := make([]domain.FilmstripFrame, 48)
+	for i := range frames {
+		frames[i].At = time.Duration(i) * time.Second
+	}
+	app := &App{
+		filmstripManifest: domain.Filmstrip{
+			Duration: 48 * time.Second,
+			Frames: frames,
+		},
+		filmstripPreviewPosition: 40,
+		filmstripHoverPinned: true,
+		filmstripHoverStart: 7,
+	}
+	got := app.visibleFilmstripFrames()
+	if got[0].At != 7*time.Second || got[len(got)-1].At != 15*time.Second {
+		t.Fatalf("pinned window = %s–%s, want 7s–15s", got[0].At, got[len(got)-1].At)
+	}
+}
+
 func TestClampPlaybackPosition(t *testing.T) {
 	tests := []struct {
 		name     string

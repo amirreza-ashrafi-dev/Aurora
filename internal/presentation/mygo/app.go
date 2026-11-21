@@ -54,6 +54,8 @@ type App struct {
 	filmstripDragging bool
 	filmstripHoverPinned bool
 	filmstripHoverStart int
+	filmstripSelectedFrame int
+	filmstripHasSelectedFrame bool
 	filmstripWheelRemainder float32
 	filmstripBitmaps map[string]*filmstripBitmap
 	filmstripBitmapClock uint64

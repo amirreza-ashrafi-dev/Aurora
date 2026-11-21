@@ -181,6 +181,8 @@ func (a *App) resetFilmstripForMedia() {
 	a.filmstripDragging = false
 	a.filmstripHoverPinned = false
 	a.filmstripHoverStart = 0
+	a.filmstripSelectedFrame = 0
+	a.filmstripHasSelectedFrame = false
 	a.filmstripWheelRemainder = 0
 	a.releaseFilmstripBitmaps()
 }
@@ -206,6 +208,8 @@ func (a *App) abandonFilmstripAfterShutdown() {
 	a.filmstripDragging = false
 	a.filmstripHoverPinned = false
 	a.filmstripHoverStart = 0
+	a.filmstripSelectedFrame = 0
+	a.filmstripHasSelectedFrame = false
 	a.filmstripWheelRemainder = 0
 	a.filmstripBitmaps = nil
 	a.filmstripBitmapClock = 0
@@ -226,6 +230,8 @@ func (a *App) closeFilmstrip() {
 	a.filmstripDragging = false
 	a.filmstripHoverPinned = false
 	a.filmstripHoverStart = 0
+	a.filmstripSelectedFrame = 0
+	a.filmstripHasSelectedFrame = false
 	a.filmstripWheelRemainder = 0
 	a.filmstripPreviewPosition = a.state.Position
 	a.releaseFilmstripBitmaps()
@@ -601,6 +607,7 @@ func (a *App) filmstripView(c *ui.Context) {
 					a.filmstripHoverPinned = false
 					a.filmstripHoverStart = 0
 					a.filmstripWheelRemainder = 0
+					a.filmstripHasSelectedFrame = false
 					a.filmstripPreviewPosition = a.state.Position
 					pointerActive = false
 				} else {
@@ -614,11 +621,12 @@ func (a *App) filmstripView(c *ui.Context) {
 					}
 
 					frames := a.visibleFilmstripFrames()
-					if pointerActive && len(frames) > 0 && bounds.W > 6 {
-						// Keep the exact tile index for drawing its hover border.
-						// The preview timestamp remains the source for the time
-						// label and the single seek committed on release.
+					if a.filmstripDragging && !over && len(frames) > 0 && bounds.W > 6 {
+						// If a drag leaves the strip, clamp to its nearest edge
+						// thumbnail. Inside the strip, the tile itself handles hits.
 						hoveredIndex = filmstripFrameIndexAtX(x, bounds.W, len(frames))
+						a.filmstripSelectedFrame = a.currentFilmstripWindowStart() + hoveredIndex
+						a.filmstripHasSelectedFrame = true
 						a.filmstripPreviewPosition = frames[hoveredIndex].At.Seconds()
 					}
 					// Do not reset the preview when the pointer leaves the
@@ -634,23 +642,36 @@ func (a *App) filmstripView(c *ui.Context) {
 
 				frames := a.visibleFilmstripFrames()
 				a.requestVisibleFilmstripBitmaps(frames)
-				selectedIndex := filmstripFrameIndexForPosition(frames, a.filmstripPreviewPosition)
+				visibleStart := a.currentFilmstripWindowStart()
+				requestedFrames := frames
 				strip.Children(func() {
-					for i, frame := range frames {
-						// While the pointer is over the strip, use its exact tile
-						// index. Otherwise keep highlighting the last preview frame,
-						// including while the pointer is over the navigation buttons.
-						highlight := i == selectedIndex
-						if pointerActive {
-							highlight = i == hoveredIndex
+					for i, frame := range requestedFrames {
+						tile := ui.Box(c).Key(frame.Path).Grow(1).FillHeight().MinWidth(0).Clip().
+							Radius(4).Background(ui.Hex("#202122"))
+
+						// Ask the tile itself whether it is hovered or was clicked.
+						// This avoids parent-row coordinate rounding at the last tile.
+						tileHovered := tile.Hovered()
+						tileClicked := tile.Clicked()
+						if tileHovered || tileClicked {
+							a.filmstripSelectedFrame = visibleStart + i
+							a.filmstripHasSelectedFrame = true
+							a.filmstripPreviewPosition = frame.At.Seconds()
 						}
+
+						selectedIndex := filmstripSelectedIndex(
+							requestedFrames,
+							visibleStart,
+							a.filmstripSelectedFrame,
+							a.filmstripHasSelectedFrame,
+							a.filmstripPreviewPosition,
+						)
+						highlight := i == selectedIndex || tileHovered || tileClicked
 						border := auroraBorderSoft
 						if highlight {
 							border = auroraAccent
 						}
-						tile := ui.Box(c).Grow(1).FillHeight().MinWidth(0).Clip().
-							Radius(4).Border(1, ui.Hex(border)).
-							Background(ui.Hex("#202122"))
+						tile = tile.Border(1, ui.Hex(border))
 						tile.Children(func() {
 							if cached := a.filmstripBitmaps[frame.Path]; cached != nil && cached.bitmap != nil {
 								ui.Image(c, cached.bitmap).FillWidth().FillHeight().Fit(ui.Cover)
@@ -695,6 +716,22 @@ func filmstripFrameIndexForPosition(frames []domain.FilmstripFrame, positionSeco
 		}
 	}
 	return -1
+}
+
+// filmstripSelectedIndex resolves the persistent manifest-frame selection
+// into the current visible window. An explicit selection outside the window
+// stays hidden; it must not silently jump to the playback position.
+func filmstripSelectedIndex(frames []domain.FilmstripFrame, windowStart, selectedFrame int, hasSelection bool, playbackPosition float64) int {
+	if len(frames) == 0 {
+		return -1
+	}
+	if hasSelection {
+		if selectedFrame < windowStart || selectedFrame >= windowStart+len(frames) {
+			return -1
+		}
+		return selectedFrame - windowStart
+	}
+	return filmstripFrameIndexForPosition(frames, playbackPosition)
 }
 
 func nearestFilmstripFrame(frames []domain.FilmstripFrame, positionSeconds float64) domain.FilmstripFrame {

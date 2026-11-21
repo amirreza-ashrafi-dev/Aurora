@@ -112,6 +112,37 @@ func TestVisibleFilmstripFramesKeepsPinnedWindow(t *testing.T) {
 }
 
 
+func TestFilmstripSelectedIndexUsesPersistentManifestIndex(t *testing.T) {
+	frames := make([]domain.FilmstripFrame, 16)
+	for i := range frames {
+		frames[i].At = time.Duration(i) * time.Second
+	}
+
+	initial := filmstripFramesAtStart(frames, 0)
+	if got := filmstripSelectedIndex(initial, 0, 8, true, 0); got != 8 {
+		t.Fatalf("last tile selection = %d, want 8", got)
+	}
+
+	nextStart := filmstripShiftWindowStart(len(frames), 0, 1)
+	next := filmstripFramesAtStart(frames, nextStart)
+	if got := filmstripSelectedIndex(next, nextStart, 8, true, 0); got != 5 {
+		t.Fatalf("selection after Next = %d, want 5", got)
+	}
+	if got := filmstripSelectedIndex(filmstripFramesAtStart(frames, 9), 9, 8, true, 0); got != -1 {
+		t.Fatalf("selection outside window = %d, want -1", got)
+	}
+}
+
+func TestFilmstripSelectedIndexFallsBackToPlaybackOnlyWithoutExplicitSelection(t *testing.T) {
+	frames := make([]domain.FilmstripFrame, 9)
+	for i := range frames {
+		frames[i].At = time.Duration(i) * time.Second
+	}
+	if got := filmstripSelectedIndex(frames, 0, 0, false, 8.1); got != 8 {
+		t.Fatalf("playback fallback selection = %d, want 8", got)
+	}
+}
+
 func TestFilmstripSelectionPersistsAcrossNextWindow(t *testing.T) {
 	frames := make([]domain.FilmstripFrame, 16)
 	for i := range frames {

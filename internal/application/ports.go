@@ -1,6 +1,11 @@
 package application
 
-import "my-go/internal/domain"
+import (
+	"context"
+	"time"
+
+	"my-go/internal/domain"
+)
 
 // Player is the application-facing port implemented by the libmpv adapter.
 type Player interface {
@@ -17,6 +22,12 @@ type Player interface {
 }
 
 // ProgressRepository stores the most recent playback position for each media path.
+// FilmstripGenerator creates or reuses a disk-cached set of video preview frames.
+// Implementations must honour cancellation and avoid retaining decoded images.
+type FilmstripGenerator interface {
+	Ensure(ctx context.Context, mediaPath string, duration time.Duration) (domain.Filmstrip, error)
+}
+
 type ProgressRepository interface {
 	Load() ([]domain.PlaybackProgress, error)
 	Save(domain.PlaybackProgress) error

@@ -1,0 +1,456 @@
+package ffmpeg
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"my-go/internal/domain"
+)
+
+const (
+	manifestVersion = 1
+	thumbnailWidth  = 160
+	thumbnailHeight = 90
+	targetFrames    = 48
+	maxDiskCache    = int64(512 << 20)
+	maxImageBytes   = int64(256 << 10)
+	maxManifestBytes = int64(64 << 10)
+)
+
+const manifestName = "manifest.json"
+
+type FilmstripGenerator struct {
+	ffmpegPath string
+	cacheRoot  string
+	// One extraction process at a time. FFmpeg is also limited to one codec
+	// and one filter thread, so thumbnail work cannot fan out uncontrolled.
+	worker chan struct{}
+}
+
+type diskManifest struct {
+	Version             int
+	SourceSize          int64
+	SourceModTimeUnixNS int64
+	DurationNS          int64
+	IntervalSeconds     int64
+	Width               int
+	Height              int
+	Frames              []diskFrame
+}
+
+type diskFrame struct {
+	File      string
+	AtNS      int64
+	SizeBytes int64
+}
+
+// NewFilmstripGenerator locates FFmpeg in the packaged resources directory,
+// beside the executable, in the development third_party folder, or on PATH.
+// A missing executable is reported when the user opens the filmstrip; it does
+// not prevent Aurora from starting or playing videos.
+func NewFilmstripGenerator(resourcesDir string) *FilmstripGenerator {
+	cacheRoot := ""
+	if base, err := os.UserCacheDir(); err == nil {
+		cacheRoot = filepath.Join(base, "Aurora Player", "filmstrip")
+	}
+	return NewFilmstripGeneratorAt(resolveFFmpeg(resourcesDir), cacheRoot)
+}
+
+// NewFilmstripGeneratorAt creates a generator with explicit paths. It is
+// exported to make cache behaviour straightforward to test.
+func NewFilmstripGeneratorAt(ffmpegPath, cacheRoot string) *FilmstripGenerator {
+	return &FilmstripGenerator{
+		ffmpegPath: ffmpegPath,
+		cacheRoot:  cacheRoot,
+		worker:     make(chan struct{}, 1),
+	}
+}
+
+// Ensure returns a complete disk-cached filmstrip, generating it only when
+// the source fingerprint or thumbnail format changes.
+func (g *FilmstripGenerator) Ensure(ctx context.Context, mediaPath string, duration time.Duration) (domain.Filmstrip, error) {
+	if g == nil {
+		return domain.Filmstrip{}, fmt.Errorf("FFmpeg filmstrip generator is unavailable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if strings.TrimSpace(mediaPath) == "" {
+		return domain.Filmstrip{}, fmt.Errorf("filmstrip source path is empty")
+	}
+	if duration <= 0 {
+		return domain.Filmstrip{}, fmt.Errorf("video duration is not available yet")
+	}
+	if g.ffmpegPath == "" {
+		return domain.Filmstrip{}, fmt.Errorf("FFmpeg was not found; install ffmpeg.exe in third_party/ffmpeg or add it to PATH")
+	}
+	if g.cacheRoot == "" {
+		return domain.Filmstrip{}, fmt.Errorf("could not resolve the Aurora user cache directory")
+	}
+
+	absolutePath, err := filepath.Abs(mediaPath)
+	if err != nil {
+		return domain.Filmstrip{}, fmt.Errorf("resolve video path: %w", err)
+	}
+	info, err := os.Stat(absolutePath)
+	if err != nil {
+		return domain.Filmstrip{}, fmt.Errorf("inspect video file: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return domain.Filmstrip{}, fmt.Errorf("filmstrip source is not a regular file")
+	}
+
+	key := cacheKey(absolutePath, info, duration)
+	targetDir := filepath.Join(g.cacheRoot, key)
+	if strip, ok := loadCachedFilmstrip(targetDir, info, duration); ok {
+		touchDirectory(targetDir)
+		return strip, nil
+	}
+
+	select {
+	case g.worker <- struct{}{}:
+		defer func() { <-g.worker }()
+	case <-ctx.Done():
+		return domain.Filmstrip{}, ctx.Err()
+	}
+
+	// Another request may have completed while this call waited for the
+	// single worker.
+	if strip, ok := loadCachedFilmstrip(targetDir, info, duration); ok {
+		touchDirectory(targetDir)
+		return strip, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return domain.Filmstrip{}, err
+	}
+	if err := os.MkdirAll(g.cacheRoot, 0o700); err != nil {
+		return domain.Filmstrip{}, fmt.Errorf("create filmstrip cache: %w", err)
+	}
+
+	tempDir, err := os.MkdirTemp(g.cacheRoot, ".filmstrip-*")
+	if err != nil {
+		return domain.Filmstrip{}, fmt.Errorf("create temporary filmstrip directory: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	stepSeconds := sampleIntervalSeconds(duration)
+	outputPattern := filepath.Join(tempDir, "frame_%03d.jpg")
+	filter := videoFilter(stepSeconds)
+	args := []string{
+		"-hide_banner",
+		"-loglevel", "error",
+		"-nostdin",
+		"-threads", "1",
+		"-filter_threads", "1",
+		"-i", absolutePath,
+		"-map", "0:V:0",
+		"-an",
+		"-sn",
+		"-dn",
+		"-vf", filter,
+		"-q:v", "6",
+		"-frames:v", strconv.Itoa(targetFrames),
+		"-start_number", "0",
+		"-f", "image2",
+		"-y", outputPattern,
+	}
+
+	cmd := exec.CommandContext(ctx, g.ffmpegPath, args...)
+	cmd.Stdout = io.Discard
+	stderr := &limitedBuffer{limit: 16 << 10}
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return domain.Filmstrip{}, ctx.Err()
+		}
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = err.Error()
+		}
+		return domain.Filmstrip{}, fmt.Errorf("FFmpeg thumbnail extraction failed: %s", detail)
+	}
+	if err := ctx.Err(); err != nil {
+		return domain.Filmstrip{}, err
+	}
+
+	files, err := filepath.Glob(filepath.Join(tempDir, "frame_*.jpg"))
+	if err != nil {
+		return domain.Filmstrip{}, fmt.Errorf("list generated thumbnails: %w", err)
+	}
+	sort.Strings(files)
+	if len(files) == 0 {
+		return domain.Filmstrip{}, fmt.Errorf("FFmpeg did not produce any video thumbnails")
+	}
+
+	interval := time.Duration(stepSeconds) * time.Second
+	manifest := diskManifest{
+		Version:             manifestVersion,
+		SourceSize:          info.Size(),
+		SourceModTimeUnixNS: info.ModTime().UnixNano(),
+		DurationNS:          duration.Nanoseconds(),
+		IntervalSeconds:     stepSeconds,
+		Width:               thumbnailWidth,
+		Height:              thumbnailHeight,
+		Frames:              make([]diskFrame, 0, len(files)),
+	}
+	for index, file := range files {
+		frameInfo, statErr := os.Stat(file)
+		if statErr != nil {
+			return domain.Filmstrip{}, fmt.Errorf("inspect generated thumbnail: %w", statErr)
+		}
+		if frameInfo.Size() <= 0 || frameInfo.Size() > maxImageBytes {
+			return domain.Filmstrip{}, fmt.Errorf("generated thumbnail has an unexpected size: %d bytes", frameInfo.Size())
+		}
+		manifest.Frames = append(manifest.Frames, diskFrame{
+			File:      filepath.Base(file),
+			AtNS:      (time.Duration(index) * interval).Nanoseconds(),
+			SizeBytes: frameInfo.Size(),
+		})
+	}
+
+	encodedManifest, err := json.Marshal(manifest)
+	if err != nil {
+		return domain.Filmstrip{}, fmt.Errorf("encode filmstrip manifest: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, manifestName), encodedManifest, 0o600); err != nil {
+		return domain.Filmstrip{}, fmt.Errorf("write filmstrip manifest: %w", err)
+	}
+
+	// A directory rename publishes all thumbnails and the manifest together.
+	// Readers therefore never mistake a partially generated cache for a
+	// complete one.
+	if err := os.RemoveAll(targetDir); err != nil {
+		return domain.Filmstrip{}, fmt.Errorf("replace incomplete filmstrip cache: %w", err)
+	}
+	if err := os.Rename(tempDir, targetDir); err != nil {
+		return domain.Filmstrip{}, fmt.Errorf("publish filmstrip cache: %w", err)
+	}
+	strip, ok := loadCachedFilmstrip(targetDir, info, duration)
+	if !ok {
+		return domain.Filmstrip{}, fmt.Errorf("published filmstrip cache failed validation")
+	}
+	touchDirectory(targetDir)
+	_ = trimDiskCache(g.cacheRoot, targetDir, maxDiskCache)
+	return strip, nil
+}
+
+func loadCachedFilmstrip(dir string, sourceInfo os.FileInfo, duration time.Duration) (domain.Filmstrip, bool) {
+	manifestPath := filepath.Join(dir, manifestName)
+	manifestInfo, err := os.Stat(manifestPath)
+	if err != nil || !manifestInfo.Mode().IsRegular() || manifestInfo.Size() <= 0 || manifestInfo.Size() > maxManifestBytes {
+		return domain.Filmstrip{}, false
+	}
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return domain.Filmstrip{}, false
+	}
+	var manifest diskManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return domain.Filmstrip{}, false
+	}
+	if manifest.Version != manifestVersion ||
+		manifest.SourceSize != sourceInfo.Size() ||
+		manifest.SourceModTimeUnixNS != sourceInfo.ModTime().UnixNano() ||
+		manifest.DurationNS != duration.Nanoseconds() ||
+		manifest.IntervalSeconds <= 0 ||
+		manifest.Width != thumbnailWidth ||
+		manifest.Height != thumbnailHeight ||
+		len(manifest.Frames) == 0 || len(manifest.Frames) > targetFrames {
+		return domain.Filmstrip{}, false
+	}
+
+	frames := make([]domain.FilmstripFrame, 0, len(manifest.Frames))
+	for _, cached := range manifest.Frames {
+		// Only accept a filename, never a path supplied by the manifest.
+		if cached.File == "" || filepath.Base(cached.File) != cached.File || cached.SizeBytes <= 0 || cached.SizeBytes > maxImageBytes {
+			return domain.Filmstrip{}, false
+		}
+		path := filepath.Join(dir, cached.File)
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() || info.Size() != cached.SizeBytes {
+			return domain.Filmstrip{}, false
+		}
+		frames = append(frames, domain.FilmstripFrame{
+			At:        time.Duration(cached.AtNS),
+			Path:      path,
+			SizeBytes: cached.SizeBytes,
+		})
+	}
+	return domain.Filmstrip{
+		Duration: duration,
+		Interval: time.Duration(manifest.IntervalSeconds) * time.Second,
+		Frames:   frames,
+	}, true
+}
+
+func cacheKey(path string, info os.FileInfo, duration time.Duration) string {
+	normalized := filepath.Clean(path)
+	if runtime.GOOS == "windows" {
+		normalized = strings.ToLower(normalized)
+	}
+	payload := fmt.Sprintf("%s\n%d\n%d\n%d\n%d\n%d\n%d\n",
+		normalized,
+		info.Size(),
+		info.ModTime().UnixNano(),
+		duration.Nanoseconds(),
+		manifestVersion,
+		thumbnailWidth,
+		thumbnailHeight,
+	)
+	sum := sha256.Sum256([]byte(payload))
+	return hex.EncodeToString(sum[:])
+}
+
+func sampleIntervalSeconds(duration time.Duration) int64 {
+	seconds := duration.Seconds()
+	step := int64(math.Ceil(seconds / float64(targetFrames-1)))
+	if step < 1 {
+		return 1
+	}
+	return step
+}
+
+func videoFilter(intervalSeconds int64) string {
+	return fmt.Sprintf(
+		"fps=1/%d,scale=%d:%d:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1",
+		intervalSeconds,
+		thumbnailWidth, thumbnailHeight,
+		thumbnailWidth, thumbnailHeight,
+	)
+}
+
+func resolveFFmpeg(resourcesDir string) string {
+	candidates := make([]string, 0, 8)
+	if resourcesDir != "" {
+		candidates = append(candidates,
+			filepath.Join(resourcesDir, "ffmpeg.exe"),
+			filepath.Join(resourcesDir, "ffmpeg", "ffmpeg.exe"),
+			filepath.Join(resourcesDir, "third_party", "ffmpeg", "ffmpeg.exe"),
+		)
+	}
+	if executable, err := os.Executable(); err == nil {
+		executableDir := filepath.Dir(executable)
+		candidates = append(candidates,
+			filepath.Join(executableDir, "ffmpeg.exe"),
+			filepath.Join(executableDir, "third_party", "ffmpeg", "ffmpeg.exe"),
+		)
+	}
+	if workingDir, err := os.Getwd(); err == nil {
+		candidates = append(candidates, filepath.Join(workingDir, "third_party", "ffmpeg", "ffmpeg.exe"))
+	}
+	candidates = append(candidates, "ffmpeg.exe", "ffmpeg")
+	for _, candidate := range candidates {
+		if candidate == "ffmpeg.exe" || candidate == "ffmpeg" {
+			if path, err := exec.LookPath(candidate); err == nil {
+				return path
+			}
+			continue
+		}
+		info, err := os.Stat(candidate)
+		if err == nil && info.Mode().IsRegular() {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func touchDirectory(path string) {
+	now := time.Now()
+	_ = os.Chtimes(path, now, now)
+}
+
+func trimDiskCache(root, keepDir string, budget int64) error {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	type cacheEntry struct {
+		path    string
+		size    int64
+		modTime time.Time
+	}
+	caches := make([]cacheEntry, 0, len(entries))
+	var total int64
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(root, entry.Name())
+		if strings.HasPrefix(entry.Name(), ".filmstrip-") {
+			// A crash can leave a temporary extraction directory behind.
+			// Keep fresh work from another process, but remove abandoned jobs.
+			if info, err := entry.Info(); err == nil && time.Since(info.ModTime()) > time.Hour {
+				_ = os.RemoveAll(path)
+			}
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(path, manifestName)); err != nil {
+			continue
+		}
+		var size int64
+		_ = filepath.WalkDir(path, func(file string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil || d.IsDir() {
+				return nil
+			}
+			if info, err := d.Info(); err == nil {
+				size += info.Size()
+			}
+			return nil
+		})
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		total += size
+		caches = append(caches, cacheEntry{path: path, size: size, modTime: info.ModTime()})
+	}
+	sort.Slice(caches, func(i, j int) bool { return caches[i].modTime.Before(caches[j].modTime) })
+	for _, item := range caches {
+		if total <= budget {
+			break
+		}
+		if item.path == keepDir {
+			continue
+		}
+		if err := os.RemoveAll(item.path); err != nil {
+			continue
+		}
+		total -= item.size
+	}
+	return nil
+}
+
+type limitedBuffer struct {
+	buffer bytes.Buffer
+	limit  int
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	n := len(p)
+	remaining := b.limit - b.buffer.Len()
+	if remaining > 0 {
+		if len(p) > remaining {
+			p = p[:remaining]
+		}
+		_, _ = b.buffer.Write(p)
+	}
+	return n, nil
+}
+
+func (b *limitedBuffer) String() string {
+	return b.buffer.String()
+}

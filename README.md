@@ -25,6 +25,7 @@ The goal is simple: make watching videos feel effortless.
 - **Smart Resume** offers to continue a video from its last saved position or start over
 - External subtitle loading, strict filename matching, per-video external subtitle restoration, drag-and-drop, custom text/outline colors, and language-specific appearance profiles
 - Keyboard shortcuts for playback, seeking, volume, fullscreen, and Cinematic Mode
+- On-demand visual timeline filmstrip with persistent FFmpeg-generated thumbnails and bounded in-memory previews
 
 ### Cinematic Mode
 
@@ -54,13 +55,15 @@ When you open a video with saved progress, Aurora offers **Resume** or **Start o
 - Go 1.27.3 or a compatible version
 - MyGo v0.9.2
 - libmpv runtime files
+- FFmpeg executable for thumbnail filmstrip generation (optional for normal playback)
 
 ## Building from Source
 
 1. Clone or download the project.
 2. Make sure the required Go dependencies are installed.
 3. Check that the MPV runtime files are available in `third_party/mpv`.
-4. Open a terminal in the project directory.
+4. For the thumbnail filmstrip, place a suitable Windows FFmpeg build at `third_party/ffmpeg/ffmpeg.exe`. The binary is not included in this source repository; FFmpeg is also discovered on `PATH`.
+5. Open a terminal in the project directory.
 5. Run:
 
 ```powershell
@@ -91,6 +94,7 @@ A media library and more advanced features may be considered in future versions.
 - [x] Add Cinematic Mode
 - [ ] Complete Subtitle Studio (per-video subtitle matching and language profile editor)
 - [ ] Add more playback options
+- [x] Add visual timeline thumbnail filmstrip
 - [ ] Improve accessibility and usability
 - [ ] Explore support for additional platforms
 

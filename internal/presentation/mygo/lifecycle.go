@@ -8,6 +8,7 @@ func (a *App) Close() {
 		a.closeFullscreenSubtitleFlyout()
 		a.closeResumeBanner()
 		a.closeVolumeOSD()
+		a.closeFilmstrip()
 		a.stopMemoryMonitor()
 		if a.memoryWindow != nil && !a.memoryWindow.IsDestroyed() {
 			a.memoryWindow.Destroy()

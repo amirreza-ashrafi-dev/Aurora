@@ -41,6 +41,9 @@ type memorySample struct {
 	ThumbnailCount          int
 	ThumbnailRasterBytes    uint64
 	ThumbnailEncodedBytes   uint64
+	FilmstripBitmapCount    int
+	FilmstripRasterBytes    uint64
+	FilmstripEncodedBytes   uint64
 	PlaylistCount           int
 	PlaylistEstimateBytes   uint64
 	SubtitleCandidateCount int
@@ -140,8 +143,9 @@ func (a *App) captureMemorySample(event ...string) {
 		GoTotalAllocBytes:   stats.TotalAlloc,
 		GoGCCycles:          stats.NumGC,
 		Goroutines:          runtime.NumGoroutine(),
-		ThumbnailCount:      len(a.queueThumbnails),
-		PlaylistCount:       len(a.playlist),
+		ThumbnailCount:       len(a.queueThumbnails),
+		FilmstripBitmapCount: len(a.filmstripBitmaps),
+		PlaylistCount:        len(a.playlist),
 		SubtitleCandidateCount: len(a.subtitleCandidates),
 		SubtitleAssignmentCount: len(a.subtitleAssignmentRecords),
 		HistoryRecordCount:  len(a.historyRecords),
@@ -162,6 +166,13 @@ func (a *App) captureMemorySample(event ...string) {
 	}
 	for _, size := range a.thumbnailEncodedBytes {
 		sample.ThumbnailEncodedBytes += size
+	}
+	for _, cached := range a.filmstripBitmaps {
+		if cached == nil {
+			continue
+		}
+		sample.FilmstripRasterBytes += cached.rasterBytes
+		sample.FilmstripEncodedBytes += cached.encodedBytes
 	}
 
 	// These are deliberately approximate retained-data estimates. The Go
@@ -303,6 +314,7 @@ func (a *App) memoryMonitorView(c *ui.Context) {
 		memoryPanel(c, "AURORA-OWNED DATA · ESTIMATES, NOT ADDITIVE", func() {
 			memoryValueRow(c, "Cached thumbnails", fmt.Sprintf("%d images · %s estimated RGBA raster", latest.ThumbnailCount, formatMemoryBytes(latest.ThumbnailRasterBytes)))
 			memoryValueRow(c, "Thumbnail PNG files read", formatMemoryBytes(latest.ThumbnailEncodedBytes))
+			memoryValueRow(c, "Filmstrip memory", fmt.Sprintf("%d images · %s decoded RGBA · %s compressed JPEG bytes retained", latest.FilmstripBitmapCount, formatMemoryBytes(latest.FilmstripRasterBytes), formatMemoryBytes(latest.FilmstripEncodedBytes)))
 			memoryValueRow(c, "Playlist", fmt.Sprintf("%d items · ~%s string/header estimate", latest.PlaylistCount, formatMemoryBytes(latest.PlaylistEstimateBytes)))
 			memoryValueRow(c, "Subtitle metadata", fmt.Sprintf("%d candidates, %d assignments · ~%s", latest.SubtitleCandidateCount, latest.SubtitleAssignmentCount, formatMemoryBytes(latest.SubtitleEstimateBytes)))
 			memoryValueRow(c, "Playback history", fmt.Sprintf("%d records · ~%s", latest.HistoryRecordCount, formatMemoryBytes(latest.HistoryEstimateBytes)))
@@ -311,6 +323,7 @@ func (a *App) memoryMonitorView(c *ui.Context) {
 		memoryPanel(c, "INTERPRETATION", func() {
 			ui.Text(c, "Working set and private bytes cover the whole Aurora process: Go, MyGo, libmpv, native libraries and graphics allocations.").FontSize(9).TextColor(ui.Hex(auroraText))
 			ui.Text(c, "libmpv does not expose a reliable per-component RAM total through the properties currently used by Aurora. MPV and GPU memory therefore cannot be separated from the process totals in this first version.").FontSize(9).TextColor(ui.Hex(auroraMuted))
+			ui.Text(c, "FFmpeg runs as a separate, short-lived child process, so its temporary memory is not included in Aurora's process counters. Filmstrip extraction is bounded to one process with one decoder and one filter thread.").FontSize(9).TextColor(ui.Hex(auroraMuted))
 			ui.Text(c, "Thumbnail raster and metadata figures are estimates for diagnosis. They overlap with Go heap memory where Go owns the backing data; do not sum these rows with Heap Allocated. GPU texture allocations may not be included in process working-set figures.").FontSize(9).TextColor(ui.Hex(auroraMuted))
 			if latest.ProcessError != "" {
 				ui.Text(c, "Process metric error: "+latest.ProcessError).FontSize(8).TextColor(ui.Hex(auroraMuted))
@@ -402,6 +415,7 @@ func (a *App) exportMemorySamples() {
 		"go_heap_alloc_bytes", "go_heap_inuse_bytes", "go_heap_sys_bytes", "go_stack_inuse_bytes",
 		"go_stack_sys_bytes", "go_sys_bytes", "go_total_alloc_bytes", "gc_cycles", "goroutines",
 		"thumbnail_count", "thumbnail_rgba_estimate_bytes", "thumbnail_png_bytes",
+		"filmstrip_bitmap_count", "filmstrip_rgba_estimate_bytes", "filmstrip_jpeg_bytes",
 		"playlist_count", "playlist_estimate_bytes", "subtitle_candidate_count", "subtitle_assignment_count",
 		"subtitle_estimate_bytes", "history_record_count", "history_estimate_bytes",
 	}
@@ -416,8 +430,9 @@ func (a *App) exportMemorySamples() {
 			strconv.FormatUint(s.GoStackSysBytes, 10), strconv.FormatUint(s.GoSysBytes, 10),
 			strconv.FormatUint(s.GoTotalAllocBytes, 10), strconv.FormatUint(uint64(s.GoGCCycles), 10),
 			strconv.Itoa(s.Goroutines), strconv.Itoa(s.ThumbnailCount), strconv.FormatUint(s.ThumbnailRasterBytes, 10),
-			strconv.FormatUint(s.ThumbnailEncodedBytes, 10), strconv.Itoa(s.PlaylistCount),
-			strconv.FormatUint(s.PlaylistEstimateBytes, 10), strconv.Itoa(s.SubtitleCandidateCount),
+			strconv.FormatUint(s.ThumbnailEncodedBytes, 10), strconv.Itoa(s.FilmstripBitmapCount),
+			strconv.FormatUint(s.FilmstripRasterBytes, 10), strconv.FormatUint(s.FilmstripEncodedBytes, 10),
+			strconv.Itoa(s.PlaylistCount), strconv.FormatUint(s.PlaylistEstimateBytes, 10), strconv.Itoa(s.SubtitleCandidateCount),
 			strconv.Itoa(s.SubtitleAssignmentCount), strconv.FormatUint(s.SubtitleEstimateBytes, 10),
 			strconv.Itoa(s.HistoryRecordCount), strconv.FormatUint(s.HistoryEstimateBytes, 10),
 		}

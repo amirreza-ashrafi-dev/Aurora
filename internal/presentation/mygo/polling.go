@@ -48,6 +48,7 @@ func (a *App) startPolling() {
 							a.pendingResume = nil
 							a.playlistPos = index
 							a.path = a.playlist[index]
+							a.resetFilmstripForMedia()
 							a.state.Position = 0
 							a.state.Duration = 0
 							a.videoHeight = 0
@@ -57,11 +58,20 @@ func (a *App) startPolling() {
 							a.restoreSubtitleForCurrent()
 						}
 					}
-					if !a.scrubbing && posErr == nil {
+					if !a.scrubbing && !a.filmstripDragging && posErr == nil {
 						a.state.Position = position
+						if !a.filmstripOpen {
+							a.timelinePreviewPosition = position
+						} else if !a.filmstripDragging {
+							a.filmstripPreviewPosition = position
+							a.timelinePreviewPosition = position
+						}
 					}
 					if durErr == nil && duration > 0 {
 						a.state.Duration = duration
+						if a.filmstripOpen && a.filmstripManifestPath != a.path {
+							a.ensureFilmstripGeneration()
+						}
 					}
 					if videoHeightErr == nil && videoHeight > 0 {
 						a.videoHeight = videoHeight

@@ -259,14 +259,22 @@ func (a *App) normalView(c *ui.Context) {
 					maxDuration := a.state.Duration
 					if maxDuration <= 0 { maxDuration = 1 }
 					ui.Row(c).Shrink(0).Gap(10).Children(func() {
-						ui.Text(c, formatTime(a.state.Position)).
+						displayPosition := a.state.Position
+						if a.scrubbing {
+							displayPosition = a.timelinePreviewPosition
+						}
+						ui.Text(c, formatTime(displayPosition)).
 							Width(48).FontSize(9).TextColor(ui.Hex(auroraMuted))
-						timeline := ui.Slider(c, &a.state.Position, 0, maxDuration).
+						if !a.scrubbing {
+							a.timelinePreviewPosition = a.state.Position
+						}
+						timeline := ui.Slider(c, &a.timelinePreviewPosition, 0, maxDuration).
 							Fill().Height(20)
 						a.updateTimeline(timeline.Dragging(), timeline.Changed())
 						ui.Text(c, formatTime(a.state.Duration)).
 							Width(48).FontSize(9).TextColor(ui.Hex(auroraMuted))
 					})
+					a.filmstripView(c)
 
 					ui.Row(c).Shrink(0).Gap(9).Children(func() {
 						if auroraQuietButton(c, "⏮").Tooltip("Previous").Clicked() {
@@ -305,6 +313,7 @@ func (a *App) normalView(c *ui.Context) {
 						ui.Text(c, fmt.Sprintf("%.0f%%", a.state.Volume)).
 							Width(36).FontSize(9).TextColor(ui.Hex(auroraText))
 						a.subtitleStudioFlyoutButton(c)
+						a.filmstripToggleButton(c)
 						if auroraQuietButton(c, "◫").Tooltip("Cinematic mode (C)").Clicked() {
 							a.toggleCinematicMode()
 						}

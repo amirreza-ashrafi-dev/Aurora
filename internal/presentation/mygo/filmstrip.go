@@ -177,6 +177,8 @@ func (a *App) resetFilmstripForMedia() {
 	a.filmstripPreviewPosition = 0
 	a.timelinePreviewPosition = 0
 	a.filmstripDragging = false
+	a.filmstripHoverPinned = false
+	a.filmstripHoverStart = 0
 	a.releaseFilmstripBitmaps()
 }
 
@@ -199,6 +201,8 @@ func (a *App) abandonFilmstripAfterShutdown() {
 	a.filmstripGeneratingFor = ""
 	a.filmstripLoadInFlight = false
 	a.filmstripDragging = false
+	a.filmstripHoverPinned = false
+	a.filmstripHoverStart = 0
 	a.filmstripBitmaps = nil
 	a.filmstripBitmapClock = 0
 }
@@ -216,6 +220,8 @@ func (a *App) closeFilmstrip() {
 	a.filmstripGenerating = false
 	a.filmstripGeneratingFor = ""
 	a.filmstripDragging = false
+	a.filmstripHoverPinned = false
+	a.filmstripHoverStart = 0
 	a.filmstripPreviewPosition = a.state.Position
 	a.releaseFilmstripBitmaps()
 }
@@ -240,24 +246,50 @@ func (a *App) visibleFilmstripFrames() []domain.FilmstripFrame {
 		return nil
 	}
 	frames := a.filmstripManifest.Frames
-	if len(frames) <= filmstripVisibleFrames {
-		return frames
+	start := 0
+	if a.filmstripHoverPinned {
+		start = a.filmstripHoverStart
+	} else {
+		start = filmstripWindowStart(len(frames), a.filmstripPreviewPosition, a.filmstripManifest.Duration.Seconds())
 	}
-	duration := a.filmstripManifest.Duration.Seconds()
-	if duration <= 0 {
-		return frames[:filmstripVisibleFrames]
+	return filmstripFramesAtStart(frames, start)
+}
+
+// filmstripWindowStart chooses the fixed thumbnail window centered around a
+// media position. The window is pinned while the pointer is over the strip so
+// its tiles cannot slide underneath the pointer during hover or dragging.
+func filmstripWindowStart(frameCount int, positionSeconds, durationSeconds float64) int {
+	visibleCount := min(frameCount, filmstripVisibleFrames)
+	if visibleCount <= 0 || frameCount <= visibleCount || durationSeconds <= 0 {
+		return 0
 	}
-	ratio := a.filmstripPreviewPosition / duration
+	ratio := clampPlaybackPosition(positionSeconds, durationSeconds) / durationSeconds
+	center := int(math.Round(ratio * float64(frameCount-1)))
+	start := center - visibleCount/2
+	return max(0, min(start, frameCount-visibleCount))
+}
+
+func filmstripFramesAtStart(frames []domain.FilmstripFrame, start int) []domain.FilmstripFrame {
+	visibleCount := min(len(frames), filmstripVisibleFrames)
+	if visibleCount == 0 {
+		return nil
+	}
+	start = max(0, min(start, len(frames)-visibleCount))
+	return frames[start : start+visibleCount]
+}
+
+// filmstripFrameIndexAtRatio maps the pointer's horizontal position to the
+// thumbnail tile beneath it. Each tile gets an equal share of the strip width.
+func filmstripFrameIndexAtRatio(ratio float64, frameCount int) int {
+	if frameCount <= 0 {
+		return -1
+	}
+	if math.IsNaN(ratio) || math.IsInf(ratio, 0) {
+		ratio = 0
+	}
 	ratio = math.Max(0, math.Min(1, ratio))
-	center := int(math.Round(ratio * float64(len(frames)-1)))
-	start := center - filmstripVisibleFrames/2
-	if start < 0 {
-		start = 0
-	}
-	if end := start + filmstripVisibleFrames; end > len(frames) {
-		start = len(frames) - filmstripVisibleFrames
-	}
-	return frames[start : start+filmstripVisibleFrames]
+	index := int(math.Floor(ratio * float64(frameCount)))
+	return min(index, frameCount-1)
 }
 
 func (a *App) requestVisibleFilmstripBitmaps(frames []domain.FilmstripFrame) {
@@ -427,23 +459,41 @@ func (a *App) filmstripView(c *ui.Context) {
 				Background(ui.Hex("#080909")).Radius(5)
 			x, _, over := strip.PointerPosition()
 			bounds := strip.Bounds()
-			if strip.PressedInside() {
+			pressedInside := strip.PressedInside()
+			pressed := strip.Pressed()
+			if pressedInside {
 				a.filmstripDragging = true
 			}
+
 			if strip.PressCanceled() {
 				a.filmstripDragging = false
+				a.filmstripHoverPinned = false
+				a.filmstripHoverStart = 0
 				a.filmstripPreviewPosition = a.state.Position
 			} else {
-				pressed := strip.Pressed()
-				if over || pressed {
-					if bounds.W > 0 && a.filmstripManifest.Duration > 0 {
-						ratio := float64(x / bounds.W)
-						ratio = math.Max(0, math.Min(1, ratio))
-						a.filmstripPreviewPosition = ratio * a.filmstripManifest.Duration.Seconds()
-					}
-				} else if !a.filmstripDragging {
+				pointerActive := over || pressed || a.filmstripDragging
+				if pointerActive && !a.filmstripHoverPinned {
+					a.filmstripHoverStart = filmstripWindowStart(
+						len(a.filmstripManifest.Frames),
+						a.filmstripPreviewPosition,
+						a.filmstripManifest.Duration.Seconds(),
+					)
+					a.filmstripHoverPinned = true
+				}
+
+				frames := a.visibleFilmstripFrames()
+				if pointerActive && len(frames) > 0 && bounds.W > 0 {
+					ratio := float64(x / bounds.W)
+					index := filmstripFrameIndexAtRatio(ratio, len(frames))
+					// Selecting the frame under the pointer keeps the visual
+					// focus, timestamp, and eventual seek on the same frame.
+					a.filmstripPreviewPosition = frames[index].At.Seconds()
+				} else if !pointerActive {
+					a.filmstripHoverPinned = false
+					a.filmstripHoverStart = 0
 					a.filmstripPreviewPosition = a.state.Position
 				}
+
 				if !pressed && a.filmstripDragging {
 					a.filmstripDragging = false
 					a.seekToFilmstripPreview()
@@ -452,7 +502,7 @@ func (a *App) filmstripView(c *ui.Context) {
 
 			frames := a.visibleFilmstripFrames()
 			a.requestVisibleFilmstripBitmaps(frames)
-			selected := nearestFilmstripFrame(a.filmstripManifest.Frames, a.filmstripPreviewPosition)
+			selected := nearestFilmstripFrame(frames, a.filmstripPreviewPosition)
 			strip.Children(func() {
 				for _, frame := range frames {
 					highlight := frame.At == selected.At

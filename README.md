@@ -19,6 +19,8 @@ The goal is simple: make watching videos feel effortless.
 ## Current Features
 
 - Video playback powered by libmpv
+- Hideable playlist sidebar, closed by default, with a native overlay in Cinematic and fullscreen modes
+- Drag-and-drop video loading: dropping supported videos onto the player adds them to the queue and immediately plays the newest added video
 - Playlist and playback controls, including removing individual queue items
 - Fullscreen playback with an auto-hiding floating controller
 - **Cinematic Mode** for distraction-free windowed or fullscreen playback
@@ -38,6 +40,14 @@ Load external SRT, ASS/SSA, WebVTT, or SUB subtitle files while a video is playi
 ### Smart Resume
 
 When you open a video with saved progress, Aurora offers **Resume** or **Start over**. Progress is stored locally in a versioned JSON file under your Windows user configuration directory. The history is limited to 500 videos and 1 MiB; the least recently watched entries are removed when a limit is reached. Automatic queue playback always starts at the beginning and does not interrupt playback with a resume prompt.
+
+## Playlist and drag-and-drop
+
+The playlist sidebar starts closed so the video stage can use the available width. Use the playlist button in the bottom playback controls to show or hide it. In the normal player view, opening the sidebar reserves space for the queue and narrows the video stage; closing it restores the full stage width.
+
+In Cinematic Mode and fullscreen, the playlist opens as a floating panel over the video instead of changing the video layout. The playlist button remains available in the playback controls in those modes.
+
+You can drag supported video files from File Explorer onto the player. New files are appended to the queue and the newest video from that drop starts playing immediately. Existing queue entries are not added a second time. Dropped subtitle files continue through the external-subtitle loading workflow.
 
 ## Open videos from Windows File Explorer
 

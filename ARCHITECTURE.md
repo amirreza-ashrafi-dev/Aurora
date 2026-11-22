@@ -38,6 +38,14 @@ Subtitle behavior is exposed through the focused `application.SubtitlePlayer` ca
 
 MyGo's stage bounds are read in the presentation layer and converted to `domain.Rect`. The Windows adapter receives only that neutral DIP rectangle and performs DPI conversion to physical pixels. It no longer imports `github.com/egoist/mygo/ui`.
 
+## Native overlays and monitor placement
+
+The embedded MPV video surface is a native child window. UI that must appear above it is hosted in separate MyGo native flyouts rather than painted into the main window's canvas. The fullscreen controller, playlist panel, and title-bar hover tooltips use this overlay approach.
+
+Floating panels should be owned by the main player window through MyGo's `NewFlyout` `Parent` option. Their anchors are DIP rectangles relative to the parent's content area. Keep an anchor inside that content area: an anchor placed exactly on or beyond the right edge can be resolved against an adjacent monitor when MyGo selects the display for a flyout.
+
+Refresh an overlay's anchor when its placement is requested again and when the player moves or resizes. This lets MyGo resolve the flyout against the monitor and work area currently occupied by the player, while preserving the native owner relationship and stacking behavior.
+
 ## Why the presentation package remains cohesive
 
 The MyGo view functions, fullscreen flyout, UI-thread callbacks, and window lifecycle share the same mutable presentation state and must run through MyGo's UI context. They are separated into focused files but remain in one package to avoid artificial package boundaries and circular imports. Playback validation, persistence, and backend/platform operations have separate packages and interfaces.

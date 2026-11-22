@@ -16,8 +16,12 @@ func (a *App) togglePlaylistSidebar() {
 		return
 	}
 	a.playlistSidebarOpen = !a.playlistSidebarOpen
+	a.syncPlaylistSidebarPresentation()
 	if a.win != nil && !a.win.IsDestroyed() {
 		a.win.Invalidate()
+	}
+	if a.controller != nil && !a.controller.IsDestroyed() {
+		a.controller.Invalidate()
 	}
 }
 

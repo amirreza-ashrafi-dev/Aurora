@@ -327,6 +327,7 @@ func (a *App) normalView(c *ui.Context) {
 							Width(36).FontSize(9).TextColor(ui.Hex(auroraText))
 						a.subtitleStudioFlyoutButton(c)
 						a.filmstripToggleButton(c)
+						a.playlistSidebarButton(c)
 						if auroraQuietButton(c, "◫").Tooltip("Cinematic mode (C)").Clicked() {
 							a.toggleCinematicMode()
 						}

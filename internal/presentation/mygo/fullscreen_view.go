@@ -95,6 +95,7 @@ func (a *App) fullscreenControls(c *ui.Context) {
 					}
 				}
 				ui.Text(c, fmt.Sprintf("%.0f%%", a.state.Volume)).Width(38).FontSize(10).TextColor(ui.Hex(auroraText))
+				a.playlistSidebarButton(c)
 			})
 		})
 	})

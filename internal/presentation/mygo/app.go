@@ -90,6 +90,9 @@ type App struct {
 	fullscreenSubtitleButtonHandle ui.Handle
 	fullscreenSubtitleFlyoutAnchor mygo.Rectangle
 	fullscreenSubtitleButtonBounds mygo.Rectangle
+
+	playlistFlyout *mygo.Window
+	playlistFlyoutAnchor mygo.Rectangle
 	colorPickerOpen bool
 	activeSubtitleLanguage string
 	history        application.ProgressRepository
@@ -154,7 +157,7 @@ func New(platform application.NativePlatform, playerFactory application.PlayerFa
 		historyRecords: make(map[string]domain.PlaybackProgress),
 		status:         "Starting Aurora Player...",
 		state:          domain.PlaybackState{Volume: 100},
-		playlistSidebarOpen: true,
+		playlistSidebarOpen: false,
 	}
 	if len(filmstripGenerators) > 0 {
 		app.filmstripGenerator = filmstripGenerators[0]
@@ -202,7 +205,7 @@ func (a *App) onReady() {
 	if err := a.platform.InstallVideoFileDrop(a.videoHWND, func(paths []string) {
 		if a.win == nil || a.win.IsDestroyed() { return }
 		a.win.Update(func() {
-			if !a.win.IsDestroyed() { a.handleDroppedSubtitleFiles(paths) }
+			if !a.win.IsDestroyed() { a.handleDroppedMediaFiles(paths) }
 		})
 	}); err != nil {
 		log.Printf("install video subtitle drop handler: %v", err)
@@ -248,6 +251,7 @@ func (a *App) onReady() {
 		a.videoLayoutFramePending = false
 		a.win.Invalidate()
 		a.updateControllerBounds()
+		a.syncPlaylistSidebarPresentation()
 		a.logDiagnostics("resize")
 	})
 	a.win.OnMaximize(func() { a.videoLayoutFramePending = false; a.win.Invalidate() })
@@ -260,6 +264,7 @@ func (a *App) onReady() {
 	a.win.OnEnterFullScreen(func() {
 		a.fullscreen = true
 		a.closeSubtitleFlyout()
+		a.syncPlaylistSidebarPresentation()
 		a.setFullscreenCursorHidden(false)
 		a.layoutVideo()
 		a.updateControllerBounds()
@@ -268,6 +273,7 @@ func (a *App) onReady() {
 	})
 	a.win.OnLeaveFullScreen(func() {
 		a.fullscreen = false
+		a.syncPlaylistSidebarPresentation()
 		if !a.cinematicMode {
 			a.setFullscreenCursorHidden(false)
 			a.hideController()

@@ -99,7 +99,7 @@ func auroraWindowButton(c *ui.Context, glyph, tooltip string, closeButton bool) 
 		Padding(0).
 		Radius(0).
 		Background(ui.Transparent).
-		Border(0, ui.Transparent).
+		Border(0, ui.Transparent)
 	if button.Hovered() {
 		if closeButton {
 			button.Background(ui.Hex("#5B211B")).TextColor(ui.Hex("#FFFFFF"))

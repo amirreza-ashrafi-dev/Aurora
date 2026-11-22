@@ -21,7 +21,7 @@ func (a *App) chooseFiles() {
 			Title:    "Add videos to playlist",
 			Multiple: true,
 			Filters: []mygo.FileFilter{
-				{Name: "Video files", Extensions: []string{"mp4", "mkv", "avi", "mov", "wmv", "webm", "m4v", "mpg", "mpeg", "ts", "m2ts", "flv", "ogv", "3gp"}},
+				{Name: "Video files", Extensions: application.VideoFileDialogExtensions()},
 				{Name: "All files", Extensions: []string{"*"}},
 			},
 		})

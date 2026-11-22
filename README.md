@@ -39,6 +39,14 @@ Load external SRT, ASS/SSA, WebVTT, or SUB subtitle files while a video is playi
 
 When you open a video with saved progress, Aurora offers **Resume** or **Start over**. Progress is stored locally in a versioned JSON file under your Windows user configuration directory. The history is limited to 500 videos and 1 MiB; the least recently watched entries are removed when a limit is reached. Automatic queue playback always starts at the beginning and does not interrupt playback with a resume prompt.
 
+## Open videos from Windows File Explorer
+
+Aurora registers itself for its supported video file types for the current Windows user when it starts. This makes Aurora available in the Windows **Open with** menu and the **Default apps** settings. Registration does not change your existing defaults.
+
+To make Aurora your default video player, right-click a video and choose **Open with**, or open **Settings → Apps → Default apps** and choose Aurora for the file types you want. After that, double-clicking an associated video opens it directly in Aurora. Aurora starts playback automatically and adds any video paths passed to it to the play queue.
+
+The supported file types are MP4, MKV, AVI, MOV, WMV, WebM, M4V, MPG, MPEG, TS, M2TS, FLV, OGV, and 3GP. If you move Aurora to a different folder, start it once from its new location so Windows can refresh the registered executable path.
+
 ## Technology
 
 | Technology | Purpose |

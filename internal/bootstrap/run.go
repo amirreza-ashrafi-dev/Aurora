@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -22,6 +23,13 @@ func Run() error {
 	platform, err := winplatform.New()
 	if err != nil {
 		return fmt.Errorf("initialize Windows platform: %w", err)
+	}
+	if executable, err := os.Executable(); err != nil {
+		log.Printf("resolve Aurora executable for Windows file associations: %v", err)
+	} else if err := winplatform.RegisterFileAssociations(executable); err != nil {
+		// Association registration is best-effort. A read-only or managed
+		// registry must not prevent users from opening Aurora directly.
+		log.Printf("register Aurora Windows file associations: %v", err)
 	}
 	playerFactory := func(videoHWND uintptr) (application.Player, error) {
 		resourcesDir, err := mygo.App.Path(mygo.PathResources)
@@ -48,6 +56,7 @@ func Run() error {
 	resourcesDir, _ := mygo.App.Path(mygo.PathResources)
 	filmstripGenerator := ffmpeg.NewFilmstripGenerator(resourcesDir)
 	app := mygopresentation.New(platform, playerFactory, progressRepository, subtitleRepository, subtitleRepository, filmstripGenerator)
+	app.SetStartupFiles(os.Args[1:])
 	defer app.Close()
 	if err := app.Run(); err != nil {
 		return fmt.Errorf("run Aurora Player: %w", err)

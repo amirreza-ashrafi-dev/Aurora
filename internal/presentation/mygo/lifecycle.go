@@ -35,6 +35,12 @@ func (a *App) Close() {
 			a.platform.DestroyWindow(a.videoHWND)
 			a.videoHWND = 0
 		}
+		if a.videoHost != nil {
+			if err := a.videoHost.Close(); err != nil {
+				log.Printf("close native video view: %v", err)
+			}
+			a.videoHost = nil
+		}
 		if a.platform != nil {
 			a.platform.Close()
 			a.platform = nil

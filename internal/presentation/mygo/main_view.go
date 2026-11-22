@@ -51,7 +51,31 @@ func (a *App) normalView(c *ui.Context) {
 						Grow(1).FillHeight().MinWidth(0).MinHeight(auroraStageMinHeight).
 						Radius(16).Background(ui.Hex("#000000")).
 						Border(1, ui.Hex(auroraBorderSoft))
-					if strings.TrimSpace(a.path) == "" {
+					if a.videoHost != nil {
+						videoStage = videoStage.Children(func() {
+							// Keep the NSView mounted even before the first video is
+							// loaded. MPV needs its host view in Aurora's window
+							// before the macvk surface is initialized.
+							ui.NativeView(c, a.videoHost).Grow(1).Children(func() {
+								if strings.TrimSpace(a.path) == "" {
+									ui.Column(c).Fill().Center().Padding(28).Gap(12).
+										Background(ui.Hex(auroraPanel)).Children(func() {
+											if logo := auroraLogo(); logo != nil {
+												ui.Image(c, logo).Width(112).Height(112).Fit(ui.Contain)
+											}
+											ui.Text(c, "YOUR CINEMA, READY").
+												FontSize(9).Bold().LetterSpacing(2.2).
+												TextColor(ui.Hex(auroraAccent))
+											ui.Text(c, "Nothing playing yet").
+												FontSize(26).Bold().
+												TextColor(ui.Hex(auroraText))
+											ui.Text(c, "Choose a video from your queue to begin watching.").
+												FontSize(12).TextColor(ui.Hex(auroraMuted))
+										})
+								}
+							})
+						})
+					} else if strings.TrimSpace(a.path) == "" {
 						videoStage = videoStage.Center().Padding(28).Gap(12).
 							Background(ui.Hex(auroraPanel)).
 							Children(func() {
@@ -332,7 +356,27 @@ func (a *App) normalView(c *ui.Context) {
 func (a *App) cinematicView(c *ui.Context) {
 	ui.Column(c).Fill().Background(ui.Hex("#050403")).Children(func() {
 		videoStage := ui.Box(c).Grow(1).FillWidth().FillHeight().MinWidth(0).MinHeight(0)
-		if strings.TrimSpace(a.path) == "" {
+		if a.videoHost != nil {
+			videoStage = videoStage.Children(func() {
+				// Keep the native host attached across empty/playback states.
+				ui.NativeView(c, a.videoHost).Grow(1).Children(func() {
+					if strings.TrimSpace(a.path) == "" {
+						ui.Column(c).Fill().Center().Padding(24).Gap(10).
+							Background(ui.Hex(auroraBackground)).Children(func() {
+								if logo := auroraLogo(); logo != nil {
+									ui.Image(c, logo).Width(104).Height(104).Fit(ui.Contain)
+								}
+								ui.Text(c, "YOUR CINEMA, READY").
+									FontSize(9).Bold().LetterSpacing(2).TextColor(ui.Hex(auroraAccent))
+								ui.Text(c, "Nothing playing yet").
+									FontSize(22).Bold().TextColor(ui.Hex(auroraText))
+								ui.Text(c, "Add a video to begin watching.").
+									FontSize(11).TextColor(ui.Hex(auroraMuted))
+							})
+					}
+				})
+			})
+		} else if strings.TrimSpace(a.path) == "" {
 			videoStage = videoStage.Center().Padding(24).Gap(10).
 				Background(ui.Hex(auroraBackground)).Children(func() {
 					if logo := auroraLogo(); logo != nil {

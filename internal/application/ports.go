@@ -34,8 +34,8 @@ type ProgressRepository interface {
 	Delete(mediaPath string) error
 }
 
-// NativePlatform is the narrow Win32 port required by the player presentation.
-// It deliberately uses domain geometry types and has no MyGo dependency.
+// NativePlatform supplies the OS-specific window and input operations used by
+// the player presentation. It deliberately has no MyGo dependency.
 type NativePlatform interface {
 	CreateVideoHost(parent uintptr) (uintptr, error)
 	InstallVideoDoubleClick(hwnd uintptr, onDoubleClick func()) error
@@ -54,5 +54,16 @@ type NativePlatform interface {
 	Close()
 }
 
-// PlayerFactory delays MPV initialization until the native video child HWND exists.
-type PlayerFactory func(videoHWND uintptr) (Player, error)
+// VideoHost is a native view that MyGo can place inside Aurora's video stage.
+// On Windows this remains an HWND child; on macOS it is an NSView supplied to libmpv.
+type VideoHost interface {
+	NativeView() uintptr
+	Close() error
+}
+
+// VideoHostFactory creates the platform-native view after MyGo is ready.
+type VideoHostFactory func() (VideoHost, error)
+
+// PlayerFactory initializes MPV against a platform-native video host handle:
+// HWND on Windows and NSView* in the patched macOS build.
+type PlayerFactory func(videoHostHandle uintptr) (Player, error)

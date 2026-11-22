@@ -67,6 +67,8 @@ type App struct {
 	videoHWND     uintptr
 	player        application.Player
 	playerFactory application.PlayerFactory
+	videoHostFactory application.VideoHostFactory
+	videoHost application.VideoHost
 	// Serializes background MPV thumbnail commands against player teardown.
 	playerCommandMu sync.RWMutex
 	subtitle application.SubtitlePlayer
@@ -130,12 +132,22 @@ type App struct {
 	closeOnce             sync.Once
 }
 
-// New creates the presentation controller. The player is created later, after
-// MyGo has supplied the native window handle for the embedded MPV surface.
+// New creates the Windows-compatible presentation controller.
 func New(platform application.NativePlatform, playerFactory application.PlayerFactory, history application.ProgressRepository, subtitlePreferences application.SubtitlePreferencesRepository, subtitleAssignments application.SubtitleAssignmentRepository, filmstripGenerators ...application.FilmstripGenerator) *App {
+	return newApp(platform, playerFactory, history, subtitlePreferences, subtitleAssignments, nil, filmstripGenerators...)
+}
+
+// NewWithVideoHost creates the presentation controller with a native-view
+// factory. macOS uses this to mount MPV's Metal-backed child view inside MyGo.
+func NewWithVideoHost(platform application.NativePlatform, playerFactory application.PlayerFactory, history application.ProgressRepository, subtitlePreferences application.SubtitlePreferencesRepository, subtitleAssignments application.SubtitleAssignmentRepository, videoHostFactory application.VideoHostFactory, filmstripGenerators ...application.FilmstripGenerator) *App {
+	return newApp(platform, playerFactory, history, subtitlePreferences, subtitleAssignments, videoHostFactory, filmstripGenerators...)
+}
+
+func newApp(platform application.NativePlatform, playerFactory application.PlayerFactory, history application.ProgressRepository, subtitlePreferences application.SubtitlePreferencesRepository, subtitleAssignments application.SubtitleAssignmentRepository, videoHostFactory application.VideoHostFactory, filmstripGenerators ...application.FilmstripGenerator) *App {
 	app := &App{
 		platform:       platform,
 		playerFactory:  playerFactory,
+		videoHostFactory: videoHostFactory,
 		history:        history,
 		subtitlePreferences: subtitlePreferences,
 		subtitleAssignments: subtitleAssignments,
@@ -184,31 +196,52 @@ func (a *App) onReady() {
 	}
 
 	var err error
-	a.videoHWND, err = a.platform.CreateVideoHost(a.win.NativeHandle())
-	if err != nil {
-		a.status = err.Error()
-		log.Println(err)
-		return
+	if a.videoHostFactory != nil {
+		a.videoHost, err = a.videoHostFactory()
+		if err != nil {
+			a.status = "Create native video view: " + err.Error()
+			log.Println(a.status)
+			return
+		}
+		if a.videoHost == nil || a.videoHost.NativeView() == 0 {
+			a.status = "Create native video view: MyGo returned an empty NSView"
+			log.Println(a.status)
+			return
+		}
+		a.videoHWND = a.videoHost.NativeView()
+	} else {
+		if a.platform == nil {
+			a.status = "Native video platform is unavailable"
+			return
+		}
+		a.videoHWND, err = a.platform.CreateVideoHost(a.win.NativeHandle())
+		if err != nil {
+			a.status = err.Error()
+			log.Println(err)
+			return
+		}
 	}
-	if err := a.platform.InstallVideoDoubleClick(a.videoHWND, a.toggleFullscreen); err != nil {
-		a.status = "Double-click handler: " + err.Error()
-		log.Println(a.status)
-	}
-	if err := a.platform.InstallVideoFileDrop(a.videoHWND, func(paths []string) {
-		if a.win == nil || a.win.IsDestroyed() { return }
-		a.win.Update(func() {
-			if !a.win.IsDestroyed() { a.handleDroppedSubtitleFiles(paths) }
-		})
-	}); err != nil {
-		log.Printf("install video subtitle drop handler: %v", err)
-	}
-	if err := a.platform.InstallVideoMouseWheel(a.videoHWND, func(delta int32) {
-		if a.win == nil || a.win.IsDestroyed() { return }
-		a.win.Update(func() {
-			if !a.win.IsDestroyed() { a.handleVolumeWheel(delta) }
-		})
-	}); err != nil {
-		log.Printf("install video mouse-wheel handler: %v", err)
+	if a.platform != nil {
+		if err := a.platform.InstallVideoDoubleClick(a.videoHWND, a.toggleFullscreen); err != nil {
+			a.status = "Double-click handler: " + err.Error()
+			log.Println(a.status)
+		}
+		if err := a.platform.InstallVideoFileDrop(a.videoHWND, func(paths []string) {
+			if a.win == nil || a.win.IsDestroyed() { return }
+			a.win.Update(func() {
+				if !a.win.IsDestroyed() { a.handleDroppedSubtitleFiles(paths) }
+			})
+		}); err != nil {
+			log.Printf("install video subtitle drop handler: %v", err)
+		}
+		if err := a.platform.InstallVideoMouseWheel(a.videoHWND, func(delta int32) {
+			if a.win == nil || a.win.IsDestroyed() { return }
+			a.win.Update(func() {
+				if !a.win.IsDestroyed() { a.handleVolumeWheel(delta) }
+			})
+		}); err != nil {
+			log.Printf("install video mouse-wheel handler: %v", err)
+		}
 	}
 
 	// Keep libmpv unloaded until the first valid video is added. The native

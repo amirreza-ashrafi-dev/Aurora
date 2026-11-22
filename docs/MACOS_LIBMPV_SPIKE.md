@@ -82,9 +82,9 @@ The script does **not** yet copy all transitive dylib dependencies into the fina
 |---|---|
 | Inspect Aurora's Windows/libmpv integration | Done |
 | Inspect MPV 0.42.0 macvk and Metal source | Done |
-| Add MPV macOS NSView embedding patch | Source added; not compiled |
-| Add MyGo Swift NSView host module | Source added; not built on macOS |
-| Add Darwin libmpv adapter and bootstrap | Source added; not cross-compiled here |
+| Add MPV macOS NSView embedding patch | Patch generated from and hunk-validated against upstream v0.42.0; not compiled |
+| Add MyGo Swift NSView host module | Source added; build check added to macOS CI |
+| Add Darwin libmpv adapter and bootstrap | Source added; macOS CI compile check pending |
 | Keep host view mounted before first playback | Implemented in presentation source |
 | Build patched libmpv with OpenGL disabled | Pending real Mac |
 | Show video inside Aurora's window using existing macvk MetalLayer | Pending real Mac |

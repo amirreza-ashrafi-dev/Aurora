@@ -221,7 +221,9 @@ func (a *App) onReady() {
 			return
 		}
 	}
-	if a.platform != nil {
+	// These handlers belong to the Win32 child HWND path. The macOS NSView
+	// is hosted by MyGo and gets its own AppKit event integration.
+	if a.platform != nil && a.videoHostFactory == nil {
 		if err := a.platform.InstallVideoDoubleClick(a.videoHWND, a.toggleFullscreen); err != nil {
 			a.status = "Double-click handler: " + err.Error()
 			log.Println(a.status)

@@ -11,11 +11,11 @@ import (
 	"my-go/internal/application"
 )
 
-func (a *App) togglePlaylistSidebar() {
+func (a *App) togglePlaylistExpanded() {
 	if a == nil {
 		return
 	}
-	a.playlistSidebarOpen = !a.playlistSidebarOpen
+	a.playlistExpanded = !a.playlistExpanded
 	if a.win != nil && !a.win.IsDestroyed() {
 		a.win.Invalidate()
 	}

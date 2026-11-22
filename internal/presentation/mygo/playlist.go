@@ -11,6 +11,20 @@ import (
 	"my-go/internal/application"
 )
 
+func (a *App) togglePlaylistSidebar() {
+	if a == nil {
+		return
+	}
+	a.playlistSidebarOpen = !a.playlistSidebarOpen
+	a.syncPlaylistSidebarPresentation()
+	if a.win != nil && !a.win.IsDestroyed() {
+		a.win.Invalidate()
+	}
+	if a.controller != nil && !a.controller.IsDestroyed() {
+		a.controller.Invalidate()
+	}
+}
+
 func (a *App) chooseFiles() {
 	if a.win == nil {
 		return

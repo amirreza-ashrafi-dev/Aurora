@@ -70,9 +70,10 @@ func (a *App) normalView(c *ui.Context) {
 					}
 					videoStage.Bind(&a.videoStageHandle)
 
-					ui.Column(c).
-						Width(auroraQueueWidth).Shrink(0).FillHeight().MinHeight(0).
-						Padding(16).Gap(12).
+					if a.playlistSidebarOpen && !a.isPlaylistOverlayMode() {
+						ui.Column(c).
+							Width(auroraQueueWidth).Shrink(0).FillHeight().MinHeight(0).
+							Padding(16).Gap(12).
 						Background(ui.Hex(auroraPanel)).
 						Border(1, ui.Hex(auroraBorderSoft)).
 						Radius(16).Clip().
@@ -91,6 +92,17 @@ func (a *App) normalView(c *ui.Context) {
 									FontSize(10).Bold().Padding(6, 9).
 									Radius(8).Background(ui.Hex(auroraAccentSoft)).
 									TextColor(ui.Hex(auroraAccent))
+								closeSidebar := ui.Button(c, "×").
+									Label("Hide playlist sidebar").
+									Width(28).MinWidth(28).Shrink(0).Height(28).
+									Padding(0).Radius(6).
+									Background(ui.Hex(auroraPanelAlt)).
+									Border(1, ui.Hex(auroraBorder)).
+									TextColor(ui.Hex(auroraMuted)).
+									Tooltip("Hide playlist sidebar")
+								if closeSidebar.Clicked() {
+									a.togglePlaylistSidebar()
+								}
 							})
 
 							if len(a.playlist) == 0 {
@@ -223,6 +235,7 @@ func (a *App) normalView(c *ui.Context) {
 									FontSize(8).TextColor(ui.Hex(auroraMuted))
 							})
 						})
+					}
 				})
 
 			// Playback deck: title/status row, timeline and transport/actions.
@@ -314,6 +327,7 @@ func (a *App) normalView(c *ui.Context) {
 							Width(36).FontSize(9).TextColor(ui.Hex(auroraText))
 						a.subtitleStudioFlyoutButton(c)
 						a.filmstripToggleButton(c)
+						a.playlistSidebarButton(c)
 						if auroraQuietButton(c, "◫").Tooltip("Cinematic mode (C)").Clicked() {
 							a.toggleCinematicMode()
 						}

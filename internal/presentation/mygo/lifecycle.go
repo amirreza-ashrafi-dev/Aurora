@@ -10,6 +10,14 @@ func (a *App) Close() {
 		}
 		a.closeSubtitleFlyout()
 		a.closeFullscreenSubtitleFlyout()
+		if a.playlistFlyout != nil && !a.playlistFlyout.IsDestroyed() {
+			a.playlistFlyout.Destroy()
+			a.playlistFlyout = nil
+		}
+		if a.windowButtonTooltipFlyout != nil && !a.windowButtonTooltipFlyout.IsDestroyed() {
+			a.windowButtonTooltipFlyout.Destroy()
+			a.windowButtonTooltipFlyout = nil
+		}
 		a.closeResumeBanner()
 		a.closeVolumeOSD()
 		a.abandonFilmstripAfterShutdown()

@@ -75,6 +75,7 @@ func (a *App) setCinematicMode(enabled bool) {
 		return
 	}
 	a.cinematicMode = enabled
+	a.syncPlaylistSidebarPresentation()
 	if enabled {
 		a.closeSubtitleFlyout()
 	}
@@ -103,6 +104,10 @@ func (a *App) registerShortcuts(c *ui.Context) {
 	c.OnWindowShortcut(ui.Alt, ui.KeyBackspace, func() { a.resetSubtitleDelay() })
 	c.OnWindowShortcut(0, ui.KeyC, a.toggleCinematicMode)
 	c.OnWindowShortcut(0, ui.KeyEscape, func() {
+		if a.playlistSidebarOpen && a.isPlaylistOverlayMode() {
+			a.togglePlaylistSidebar()
+			return
+		}
 		if a.fullscreenSubtitleFlyout != nil && !a.fullscreenSubtitleFlyout.IsDestroyed() {
 			a.closeFullscreenSubtitleFlyout()
 			return

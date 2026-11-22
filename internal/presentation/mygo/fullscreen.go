@@ -301,6 +301,7 @@ func (a *App) startControllerMonitor() {
 						a.fullscreenHeader,
 						a.resumeBanner,
 						a.fullscreenSubtitleFlyout,
+						a.playlistFlyout,
 					} {
 						if overlay == nil || overlay.IsDestroyed() || !overlay.IsVisible() {
 							continue

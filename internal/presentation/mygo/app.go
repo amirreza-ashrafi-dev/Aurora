@@ -19,6 +19,11 @@ import (
 // application ports for MPV playback and native Windows operations.
 type App struct {
 	win          *mygo.Window
+	windowButtonTooltipFlyout *mygo.Window
+	windowButtonTooltipLabel string
+	windowButtonTooltipAnchor mygo.Rectangle
+	windowButtonTooltipSince time.Time
+	windowButtonTooltipPending bool
 	controller   *mygo.Window
 	resumeBanner          *mygo.Window
 	resumeBannerAnchor    mygo.Rectangle
@@ -90,6 +95,9 @@ type App struct {
 	fullscreenSubtitleButtonHandle ui.Handle
 	fullscreenSubtitleFlyoutAnchor mygo.Rectangle
 	fullscreenSubtitleButtonBounds mygo.Rectangle
+
+	playlistFlyout *mygo.Window
+	playlistFlyoutAnchor mygo.Rectangle
 	colorPickerOpen bool
 	activeSubtitleLanguage string
 	history        application.ProgressRepository
@@ -113,6 +121,7 @@ type App struct {
 	windowReady bool
 	playlist    []string
 	playlistPos int
+	playlistSidebarOpen bool
 	pendingPlaylistRemoval []string
 	status      string
 	state       domain.PlaybackState
@@ -153,6 +162,7 @@ func New(platform application.NativePlatform, playerFactory application.PlayerFa
 		historyRecords: make(map[string]domain.PlaybackProgress),
 		status:         "Starting Aurora Player...",
 		state:          domain.PlaybackState{Volume: 100},
+		playlistSidebarOpen: false,
 	}
 	if len(filmstripGenerators) > 0 {
 		app.filmstripGenerator = filmstripGenerators[0]
@@ -200,10 +210,10 @@ func (a *App) onReady() {
 	if err := a.platform.InstallVideoFileDrop(a.videoHWND, func(paths []string) {
 		if a.win == nil || a.win.IsDestroyed() { return }
 		a.win.Update(func() {
-			if !a.win.IsDestroyed() { a.handleDroppedSubtitleFiles(paths) }
+			if !a.win.IsDestroyed() { a.handleDroppedMediaFiles(paths) }
 		})
 	}); err != nil {
-		log.Printf("install video subtitle drop handler: %v", err)
+		log.Printf("install video file-drop handler: %v", err)
 	}
 	if err := a.platform.InstallVideoMouseWheel(a.videoHWND, func(delta int32) {
 		if a.win == nil || a.win.IsDestroyed() { return }
@@ -229,8 +239,10 @@ func (a *App) onReady() {
 		}
 	}
 	a.win.OnFileDrop(func(event *mygo.FileDropEvent) {
-		if event == nil { return }
-		a.handleDroppedSubtitleFiles(event.Paths)
+		if event == nil {
+			return
+		}
+		a.handleDroppedMediaFiles(event.Paths)
 	})
 
 	a.win.OnReadyToShow(func() {
@@ -246,6 +258,7 @@ func (a *App) onReady() {
 		a.videoLayoutFramePending = false
 		a.win.Invalidate()
 		a.updateControllerBounds()
+		a.syncPlaylistSidebarPresentation()
 		a.logDiagnostics("resize")
 	})
 	a.win.OnMaximize(func() { a.videoLayoutFramePending = false; a.win.Invalidate() })
@@ -253,11 +266,15 @@ func (a *App) onReady() {
 	a.win.OnMove(func() {
 		a.win.Invalidate()
 		a.updateControllerBounds()
+		// Re-anchor owned overlays after a cross-monitor move. MyGo resolves
+		// the flyout against the monitor containing its parent/anchor.
+		a.syncPlaylistSidebarPresentation()
 		a.logDiagnostics("move")
 	})
 	a.win.OnEnterFullScreen(func() {
 		a.fullscreen = true
 		a.closeSubtitleFlyout()
+		a.syncPlaylistSidebarPresentation()
 		a.setFullscreenCursorHidden(false)
 		a.layoutVideo()
 		a.updateControllerBounds()
@@ -266,6 +283,7 @@ func (a *App) onReady() {
 	})
 	a.win.OnLeaveFullScreen(func() {
 		a.fullscreen = false
+		a.syncPlaylistSidebarPresentation()
 		if !a.cinematicMode {
 			a.setFullscreenCursorHidden(false)
 			a.hideController()

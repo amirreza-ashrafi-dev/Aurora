@@ -1,0 +1,27 @@
+name: macOS Go checks
+
+on:
+  push:
+    branches:
+      - feature/macos-libmpv-spike
+  pull_request:
+    branches:
+      - feature/thumbnail-filmstrip
+      - master
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test Go packages
+        run: go test ./...
+

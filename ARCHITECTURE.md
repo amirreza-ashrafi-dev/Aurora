@@ -21,13 +21,21 @@ main.go ─────┴─> internal/bootstrap
 The direction is enforced by Go package boundaries:
 
 - `domain` has no framework, operating-system, or playback-backend dependency. It owns neutral playback and progress data types.
-- `application` defines the `Player`, `FilmstripGenerator`, `ProgressRepository`, `NativePlatform`, and `PlayerFactory` contracts, plus reusable playlist-validation, playback-clamping, and resume-validation logic.
+- `application` defines the `Player`, `FilmstripGenerator`, `ProgressRepository`, `NativePlatform`, and `PlayerFactory` contracts, plus reusable playlist-validation, playback-clamping, resume-validation logic, and the canonical supported-video-extension list.
 - `adapters/mpv` implements playback using `purego` and the bundled libmpv DLL.
 - `adapters/ffmpeg` generates optional timeline thumbnails in cancellable child processes and stores compressed JPEG frames under the user's cache directory. It is independent of normal playback.
 - `adapters/history` implements `ProgressRepository` with a versioned JSON file in the user's configuration directory. It owns atomic file replacement and history-size limits.
-- `platform/windows` implements the native child-window and cursor operations using Win32.
+- `platform/windows` implements the native child-window and cursor operations using Win32, plus current-user Windows file-association registration.
 - `presentation/mygo` owns MyGo windows, UI composition, event handling, and view state. It depends on interfaces from `application`, not concrete MPV, persistence, or Win32 types.
 - `bootstrap` creates the concrete adapters and injects them into the presentation layer.
+
+## Windows Explorer file opening
+
+`application/video_files.go` owns the canonical video-extension allow-list. The file picker, Explorer launch filtering, and Windows association registration all use this list so their supported types stay aligned.
+
+`mygo.json` declares those extensions as a MyGo `Viewer` association for packaged builds. At application startup, `bootstrap` requests MyGo's single-instance lock and registers an Aurora ProgID, Open with entries, and a Default Apps capability under the current user's registry hive. Registration is best-effort and never changes a user's existing default application.
+
+MyGo's `OnOpenFile` callback sends a requested path to the presentation layer. `startup_files.go` filters launch paths, debounces the per-file callbacks so Explorer multi-select opens are collected together, and waits until the main window is ready before processing them. Explorer opens replace the active queue and reuse the normal `addFiles` playback path. A later launch is forwarded to the existing process, where `OnSecondInstance` restores and focuses the window.
 
 ## Smart Resume
 

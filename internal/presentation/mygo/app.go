@@ -19,6 +19,11 @@ import (
 // application ports for MPV playback and native Windows operations.
 type App struct {
 	win          *mygo.Window
+	windowButtonTooltipFlyout *mygo.Window
+	windowButtonTooltipLabel string
+	windowButtonTooltipAnchor mygo.Rectangle
+	windowButtonTooltipSince time.Time
+	windowButtonTooltipPending bool
 	controller   *mygo.Window
 	resumeBanner          *mygo.Window
 	resumeBannerAnchor    mygo.Rectangle

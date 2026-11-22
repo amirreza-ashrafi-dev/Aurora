@@ -8,6 +8,9 @@ func (a *App) windowTitleBar(c *ui.Context) {
 		maximizeGlyph = "▣"
 	}
 
+	var hoveredTooltip string
+	var hoveredTooltipBounds ui.Rect
+
 	ui.Row(c).
 		Height(40).
 		FillWidth().
@@ -29,17 +32,38 @@ func (a *App) windowTitleBar(c *ui.Context) {
 			ui.Box(c).Fill().Height(40).DragWindow()
 			if a.win != nil {
 				ui.Row(c).Height(40).Gap(0).Children(func() {
-					if auroraWindowButton(c, "−", "Minimize", false).Clicked() {
+					minimizeButton := auroraWindowButton(c, "−", "Minimize", false)
+					if minimizeButton.Hovered() {
+						hoveredTooltip = "Minimize"
+						hoveredTooltipBounds = minimizeButton.Bounds()
+					}
+					if minimizeButton.Clicked() {
 						a.win.Minimize()
 					}
+
 					maximizeButton := auroraWindowButton(c, maximizeGlyph, "Maximize / restore", false).MaximizeButton()
+					if maximizeButton.Hovered() {
+						hoveredTooltip = "Maximize / restore"
+						hoveredTooltipBounds = maximizeButton.Bounds()
+					}
 					if maximizeButton.Clicked() {
 						a.win.ToggleMaximize()
 					}
-					if auroraWindowButton(c, "×", "Close Aurora Player", true).Clicked() {
+
+					closeButton := auroraWindowButton(c, "×", "Close Aurora Player", true)
+					if closeButton.Hovered() {
+						hoveredTooltip = "Close Aurora Player"
+						hoveredTooltipBounds = closeButton.Bounds()
+					}
+					if closeButton.Clicked() {
 						a.win.Close()
 					}
 				})
 			}
 		})
+
+	// These controls sit above a native video child HWND. Their tooltip must
+	// therefore use an owned flyout window, not MyGo's in-canvas tooltip layer,
+	// which the video HWND can cover.
+	a.syncWindowButtonTooltip(c, hoveredTooltip, hoveredTooltipBounds)
 }

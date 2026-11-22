@@ -39,7 +39,24 @@ func (a *App) playlistSidebarFlyoutTarget() (mygo.Rectangle, int, bool) {
 	if a == nil || a.win == nil || a.win.IsDestroyed() { return mygo.Rectangle{}, 0, false }
 	bounds := a.win.ContentBounds()
 	if bounds.Width < 1 || bounds.Height < 1 { return mygo.Rectangle{}, 0, false }
-	return mygo.Rectangle{X: bounds.Width, Y: bounds.Height / 2, Width: 1, Height: 1}, bounds.Height, true
+	// Keep the 1-DIP anchor inside the player's client area. MyGo uses
+	// the monitor intersecting this anchor to place the flyout. An anchor
+	// exactly at X == bounds.Width sits outside the window and can resolve
+	// to an adjacent monitor (for example, the primary display).
+	anchor := playlistSidebarAnchor(bounds.Width, bounds.Height)
+	return anchor, bounds.Height, true
+}
+
+func playlistSidebarAnchor(width, height int) mygo.Rectangle {
+	if width < 1 || height < 1 {
+		return mygo.Rectangle{}
+	}
+	return mygo.Rectangle{
+		X:      width - 1,
+		Y:      height / 2,
+		Width:  1,
+		Height: 1,
+	}
 }
 
 func (a *App) showPlaylistSidebarFlyout() {

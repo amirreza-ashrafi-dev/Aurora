@@ -70,14 +70,10 @@ func (a *App) normalView(c *ui.Context) {
 					}
 					videoStage.Bind(&a.videoStageHandle)
 
-					queuePanel := ui.Column(c).
-						Width(auroraQueueWidth).Shrink(0).MinHeight(0)
-					if a.playlistExpanded {
-						queuePanel = queuePanel.FillHeight()
-					} else {
-						queuePanel = queuePanel.Height(120)
-					}
-					queuePanel.Padding(16).Gap(12).
+					if a.playlistSidebarOpen {
+						ui.Column(c).
+							Width(auroraQueueWidth).Shrink(0).FillHeight().MinHeight(0).
+							Padding(16).Gap(12).
 						Background(ui.Hex(auroraPanel)).
 						Border(1, ui.Hex(auroraBorderSoft)).
 						Radius(16).Clip().
@@ -96,26 +92,20 @@ func (a *App) normalView(c *ui.Context) {
 									FontSize(10).Bold().Padding(6, 9).
 									Radius(8).Background(ui.Hex(auroraAccentSoft)).
 									TextColor(ui.Hex(auroraAccent))
-								toggleLabel := "⌃"
-								toggleTooltip := "Collapse playlist"
-								if !a.playlistExpanded {
-									toggleLabel = "⌄"
-									toggleTooltip = "Expand playlist"
-								}
-								toggle := ui.Button(c, toggleLabel).
-									Label(toggleTooltip).
+								closeSidebar := ui.Button(c, "×").
+									Label("Hide playlist sidebar").
 									Width(28).MinWidth(28).Shrink(0).Height(28).
 									Padding(0).Radius(6).
 									Background(ui.Hex(auroraPanelAlt)).
 									Border(1, ui.Hex(auroraBorder)).
 									TextColor(ui.Hex(auroraMuted)).
-									Tooltip(toggleTooltip)
-								if toggle.Clicked() {
-									a.togglePlaylistExpanded()
+									Tooltip("Hide playlist sidebar")
+								if closeSidebar.Clicked() {
+									a.togglePlaylistSidebar()
 								}
 							})
 
-							if a.playlistExpanded && len(a.playlist) == 0 {
+							if len(a.playlist) == 0 {
 								ui.Column(c).
 									Basis(0).Grow(1).Shrink(1).FillWidth().MinHeight(0).
 									Padding(14).Gap(7).
@@ -127,7 +117,7 @@ func (a *App) normalView(c *ui.Context) {
 										ui.Text(c, "Add a few videos to start watching.").
 											FontSize(10).TextColor(ui.Hex(auroraMuted))
 									})
-							} else if a.playlistExpanded {
+							} else {
 								ui.List(c, nil, len(a.playlist), func(i int) {
 									index := i
 									mediaPath := a.playlist[i]
@@ -239,14 +229,13 @@ func (a *App) normalView(c *ui.Context) {
 								if auroraAddVideosButton(c).Clicked() {
 									a.chooseFiles()
 								}
-								if a.playlistExpanded {
-									ui.Text(c, "SPACE  Play / Pause").
-										FontSize(8).TextColor(ui.Hex(auroraMuted))
-									ui.Text(c, "← →  Seek     ↑ ↓  Volume").
-										FontSize(8).TextColor(ui.Hex(auroraMuted))
-								}
+								ui.Text(c, "SPACE  Play / Pause").
+									FontSize(8).TextColor(ui.Hex(auroraMuted))
+								ui.Text(c, "← →  Seek     ↑ ↓  Volume").
+									FontSize(8).TextColor(ui.Hex(auroraMuted))
 							})
 						})
+					}
 				})
 
 			// Playback deck: title/status row, timeline and transport/actions.

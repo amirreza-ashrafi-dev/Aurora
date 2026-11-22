@@ -26,6 +26,13 @@ func (a *App) windowTitleBar(c *ui.Context) {
 				FontSize(8).
 				LetterSpacing(0.7).
 				TextColor(ui.Hex(auroraMuted))
+			sidebarTooltip := "Hide playlist sidebar"
+			if !a.playlistSidebarOpen {
+				sidebarTooltip = "Show playlist sidebar"
+			}
+			if auroraWindowButton(c, "☷", sidebarTooltip, false).Clicked() {
+				a.togglePlaylistSidebar()
+			}
 			ui.Box(c).Fill().Height(40).DragWindow()
 			if a.win != nil {
 				ui.Row(c).Height(40).Gap(0).Children(func() {

@@ -208,7 +208,7 @@ func (a *App) onReady() {
 			if !a.win.IsDestroyed() { a.handleDroppedMediaFiles(paths) }
 		})
 	}); err != nil {
-		log.Printf("install video subtitle drop handler: %v", err)
+		log.Printf("install video file-drop handler: %v", err)
 	}
 	if err := a.platform.InstallVideoMouseWheel(a.videoHWND, func(delta int32) {
 		if a.win == nil || a.win.IsDestroyed() { return }
@@ -234,8 +234,10 @@ func (a *App) onReady() {
 		}
 	}
 	a.win.OnFileDrop(func(event *mygo.FileDropEvent) {
-		if event == nil { return }
-		a.handleDroppedSubtitleFiles(event.Paths)
+		if event == nil {
+			return
+		}
+		a.handleDroppedMediaFiles(event.Paths)
 	})
 
 	a.win.OnReadyToShow(func() {

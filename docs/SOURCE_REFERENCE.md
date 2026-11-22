@@ -2,7 +2,7 @@
 
 This reference describes the tracked Go source files, their package responsibilities, exported/unexported types, functions, methods, and tests. The [Developer Guide](DEVELOPER_GUIDE.md) explains architecture and complete user workflows; this file is the code-navigation catalogue.
 
-The feature-branch audit counted 81 tracked files: 58 Go files (including tests), four PNG assets, three Git LFS-managed runtime binaries (two MPV/D3D DLLs and FFmpeg), and 16 other documentation/configuration/build/license files. Build-tagged files are alternatives: only the file matching the current GOOS is compiled. The inventory includes the timeline filmstrip implementation.
+The feature-branch audit counted 86 tracked files: 63 Go files (including tests), four PNG assets, three Git LFS-managed runtime binaries (two MPV/D3D DLLs and FFmpeg), and 16 other documentation/configuration/build/license files. Build-tagged files are alternatives: only the file matching the current GOOS is compiled. The inventory includes the timeline filmstrip and Windows Explorer file-opening implementations.
 
 # 1. Entrypoints and bootstrap
 
@@ -15,13 +15,16 @@ Both have package main and define main(). main calls bootstrap.Run(); if it retu
 ### Run() error
 
 Creates the concrete application dependencies and starts the app:
-1. Creates the Windows platform using winplatform.New.
-2. Builds a PlayerFactory closure that resolves MyGo's resource directory and calls mpv.New when a video HWND is supplied.
-3. Resolves the user's config directory.
-4. Creates history and subtitle JSON repositories.
-5. Resolves MyGo's packaged resources directory and creates ffmpeg.NewFilmstripGenerator(resourcesDir).
-6. Injects the platform, player factory, history/subtitle repositories, and filmstrip generator into presentation.New.
-7. Defers App.Close, then calls App.Run.
+1. Requests MyGo's single-instance lock. If another instance owns it, returns without starting a second playback window.
+2. Creates the Windows platform using winplatform.New.
+3. Resolves os.Executable and calls winplatform.RegisterFileAssociations for the current user. Executable-resolution or registry errors are logged; they do not block startup.
+4. Builds a PlayerFactory closure that resolves MyGo's resource directory and calls mpv.New when a video HWND is supplied.
+5. Resolves the user's config directory.
+6. Creates history and subtitle JSON repositories.
+7. Resolves MyGo's packaged resources directory and creates ffmpeg.NewFilmstripGenerator(resourcesDir).
+8. Injects the platform, player factory, history/subtitle repositories, and filmstrip generator into presentation.New.
+9. Registers MyGo OnOpenFile to call App.QueueOpenFile and OnSecondInstance to call App.Activate.
+10. Defers App.Close, then calls App.Run.
 
 Returns initialization or event-loop errors. If initialization after platform creation fails, the platform is closed before returning.
 
@@ -168,6 +171,28 @@ Internal helper: trims the path, makes it absolute, resolves symlinks when possi
 ### RemovePlaylistEntry(queue, currentIndex, removeIndex) ([]string, int, bool)
 
 Builds a new queue without removeIndex and computes the new current index. Removing an item before current decreases the index. Removing the current item selects the next item at that index, or the prior final item when the removed item was last. Returns new queue, new current index, and whether the removed item was current. Invalid remove indexes leave the original queue/index unchanged and report false.
+
+## internal/application/video_files.go
+
+### supportedVideoExtensions
+
+The canonical extension allow-list shared by the file picker, Explorer launch filtering, and Windows registry registration: .mp4, .mkv, .avi, .mov, .wmv, .webm, .m4v, .mpg, .mpeg, .ts, .m2ts, .flv, .ogv, and .3gp.
+
+### SupportedVideoExtensions() []string
+
+Returns a copy of the canonical extension slice so callers cannot mutate the package's shared list.
+
+### VideoFileDialogExtensions() []string
+
+Returns the same extensions without leading dots for the MyGo native file-dialog filter.
+
+### IsSupportedVideoFile(path) bool
+
+Trims the path, extracts and lowercases its extension, and checks it against the supported list. It does not check file existence or readability.
+
+### FilterVideoLaunchPaths(paths) []string
+
+Filters Explorer/launch callback paths by supported extension and removes blank or option-like values. It leaves file existence and regular-file checks to FilterNewMedia.
 
 ## internal/application/progress.go
 
@@ -606,6 +631,14 @@ Frees comctl32, shell32, and user32 handles and clears them.
 
 Selected for !windows. New and operations that require native window creation/placement return Windows-only errors. CursorInsideWindow returns false/empty point; WindowDPI returns 96; show/update/destroy methods return zero; subclass removal, diagnostics, and Close do nothing. It keeps the interface compiling without simulating a video host.
 
+## internal/platform/windows/file_associations_windows.go
+
+Selected for Windows. RegisterFileAssociations(executablePath) error validates the executable path and registers Aurora for the current Windows user. It creates an application-specific ProgID and quoted open command, an icon association, an Applications entry, a RegisteredApplications capability, per-extension SupportedTypes values, Default Apps capability mappings, and OpenWithProgids entries. It never writes the extension's default-association value, so the user remains in control of the default application.
+
+## internal/platform/windows/file_associations_unsupported.go
+
+Selected for non-Windows builds. RegisterFileAssociations is a no-op so the bootstrap package remains buildable outside Windows.
+
 # 8. MyGo presentation package
 
 All files below use package presentation under internal/presentation/mygo. They share App state and the MyGo UI-thread lifecycle.
@@ -632,6 +665,7 @@ All files below use package presentation under internal/presentation/mygo. They 
 - progressRequests/progressStop/progressDone: serialized progress writer channels.
 - videoStageHandle/bounds/DPI flags: MyGo-to-native geometry tracking and follow-up frame state.
 - path/playlist/playlistPos/pendingPlaylistRemoval: current media, Go queue, selected index, deferred removals.
+- startupFiles/startupFilesTimer/windowReady: Explorer launch paths waiting for the main window, the short debounce timer, and the main-window readiness flag.
 - status/state/scrubbing/fullscreen/cinematicMode: current presentation state.
 - pollStop/pollDone, controllerStop/controllerDone: background goroutine lifecycle.
 - controllerAnchor/hasControllerAnchor: last flyout anchor.
@@ -650,7 +684,7 @@ Registers onReady with MyGo and starts its event loop.
 
 ### onReady()
 
-Creates the main window, sets its icon, creates the hidden native child, installs double-click/drop/wheel callbacks, loads history and subtitle state, and registers window lifecycle handlers. Deliberately leaves libmpv unloaded.
+Creates the main window, sets its icon, creates the hidden native child, installs double-click/drop/wheel callbacks, loads history and subtitle state, and registers window lifecycle handlers. Its OnReadyToShow callback completes window setup, marks windowReady, and drains any Explorer paths that arrived during startup. Deliberately leaves libmpv unloaded.
 
 ### ensurePlayer() error
 
@@ -671,6 +705,24 @@ Clamps negative values to zero and formats mm:ss or h:mm:ss.
 ### currentTitle() string
 
 Returns the title derived from domain.Media{Path:a.path}.
+
+## internal/presentation/mygo/startup_files.go
+
+### QueueOpenFile(path)
+
+Receives one Explorer path from MyGo, keeps only supported video extensions through FilterVideoLaunchPaths, and queues it. MyGo delivers one callback per file, so the method restarts a 40 ms timer to collect multi-select opens. Before the window is ready, it only stores the path.
+
+### openQueuedFiles()
+
+Runs on the MyGo UI thread after the window is ready. Stops the pending timer, drains the collected paths, delegates to openFilesFromExplorer, and invalidates the window.
+
+### openFilesFromExplorer(paths)
+
+Validates paths and duplicates with FilterNewMedia. If at least one file is valid, saves current playback progress, clears the resume prompt, filmstrip, prior queue thumbnails, queue, selection, and media state, then calls addFiles. Opening from Explorer therefore replaces the current queue.
+
+### Activate()
+
+Restores Aurora if minimized, then shows and focuses the existing window after MyGo forwards a second-instance open request.
 
 ## internal/presentation/mygo/brand.go
 
@@ -1151,7 +1203,7 @@ Draws volume label, clamped percentage, and progress bar.
 
 ### Close()
 
-Uses closeOnce. Closes subtitle/resume/volume flyouts; stops memory/controller/playback monitors; destroys memory/fullscreen/controller windows; saves final progress; stops writer; restores cursor; destroys controller; closes MPV; removes Win32 subclasses; destroys the video HWND; and closes platform DLLs. Handles partial initialization.
+Uses closeOnce. Stops and clears the pending Explorer startup-file debounce timer, closes subtitle/resume/volume flyouts, stops memory/controller/playback monitors, destroys memory/fullscreen/controller windows, saves final progress, stops writer, restores cursor, destroys controller, closes MPV, removes Win32 subclasses, destroys the video HWND, and closes platform DLLs. Handles partial initialization.
 
 ## internal/presentation/mygo/memory_metrics_windows.go
 
@@ -1276,6 +1328,12 @@ This section names every test function and the rule it protects.
 - TestSubtitleLanguageFromFilename: extracts regional tag and rejects unrelated stem.
 - TestIsSubtitleFile: accepted extensions, rejected formats, and directories.
 
+## internal/application/video_files_test.go
+
+- TestFilterVideoLaunchPaths: keeps supported Explorer paths and rejects blanks, unsupported extensions, and option-like arguments.
+- TestVideoFileDialogExtensionsMatchSupportedExtensions: checks that file-dialog filters match the canonical association list and that callers receive a defensive copy.
+- TestIsSupportedVideoFile: checks case-insensitive supported extensions and rejects unsupported or malformed paths.
+
 ## internal/presentation/mygo/memory_monitor_test.go
 
 - TestFormatMemoryBytes: 2 MiB formats as 2.0 MiB.
@@ -1316,12 +1374,12 @@ Persistence tests use temp directories. Adapter tests use pure helper/process-co
 
 | Path | Purpose |
 |---|---|
-| README.md | User-facing overview, features, requirements, and build instructions |
+| README.md | User-facing overview, features, Windows Explorer/Open with instructions, requirements, and build instructions |
 | ARCHITECTURE.md | Short package/layer dependency explanation |
 | DESIGN_SYSTEM.md | Palette, layout measurements, visual rules, and design implementation notes |
 | go.mod | Module name, Go version, MyGo tool dependency, direct/indirect modules |
 | go.sum | Dependency checksums |
-| mygo.json | App name, identifier, version, build output, bundled MPV DLL/FFmpeg resources, executable icon |
+| mygo.json | App name, identifier, version, build output, bundled MPV DLL/FFmpeg resources, executable icon, and packaged Windows video file associations |
 | makefile | build_windows convenience target |
 | .gitattributes | Git LFS rules for MPV DLLs and FFmpeg executable |
 | .gitignore | Excludes build/, .mygo/, and generated MyGo Windows resource file |

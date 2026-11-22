@@ -1,7 +1,7 @@
 {
   "name": "Aurora Player",
   "identifier": "com.aurora.player",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "out": "build",
   "resources": [
     "third_party/mpv/libmpv-2.dll",

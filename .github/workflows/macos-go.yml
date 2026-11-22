@@ -1,4 +1,4 @@
-name: macOS Go and native-module checks
+name: macOS Go checks
 
 on:
   push:
@@ -22,11 +22,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Generate MyGo native bindings
-        run: go tool mygo generate
-
       - name: Test Go packages
         run: go test ./...
 
-      - name: Build Swift native module
-        run: swift build --package-path internal/platform/macos/videohost/swift

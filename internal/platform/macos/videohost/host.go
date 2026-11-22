@@ -1,47 +1,120 @@
+//go:build darwin
+
 package videohost
 
 import (
+	"errors"
 	"fmt"
+	"sync"
+	"structs"
 
-	"github.com/egoist/mygo/native"
+	"github.com/ebitengine/purego"
+	"github.com/ebitengine/purego/objc"
+
+	// Importing native installs MyGo's ui.NativeView embedding hook. The
+	// host itself is an ordinary Go-owned NSView, not a MyGo native module.
+	_ "github.com/egoist/mygo/native"
 )
 
-// Host is the NSView created by the native module and mounted by MyGo.
-//mygo:native
-type Host interface {
-	native.View
+const appKitPath = "/System/Library/Frameworks/AppKit.framework/AppKit"
+
+var (
+	appKitOnce   sync.Once
+	appKitHandle uintptr
+	appKitErr    error
+
+	selAlloc                       = objc.RegisterName("alloc")
+	selInitWithFrame               = objc.RegisterName("initWithFrame:")
+	selSetWantsLayer               = objc.RegisterName("setWantsLayer:")
+	selSetPostsBoundsNotifications = objc.RegisterName("setPostsBoundsChangedNotifications:")
+	selSetPostsFrameNotifications  = objc.RegisterName("setPostsFrameChangedNotifications:")
+	selRemoveFromSuperview         = objc.RegisterName("removeFromSuperview")
+	selRelease                     = objc.RegisterName("release")
+)
+
+// nsRect has the same ABI layout as AppKit's NSRect on 64-bit macOS.
+type nsRect struct {
+	_      structs.HostLayout
+	X, Y   float64
+	Width  float64
+	Height float64
 }
 
-// VideoHost is the application-facing owner of the native view.
-type VideoHost interface {
-	Host
-	Close() error
+// VideoHost owns the NSView that MyGo places in the video stage.
+// MPV's patched macvk output adds its own Metal-backed view below this host.
+type VideoHost struct {
+	mu        sync.Mutex
+	view      objc.ID
+	closeOnce sync.Once
 }
 
-type ownedHost struct {
-	Host
-	object *native.Object
+func loadAppKit() error {
+	appKitOnce.Do(func() {
+		appKitHandle, appKitErr = purego.Dlopen(appKitPath, purego.RTLD_NOW|purego.RTLD_GLOBAL)
+		if appKitErr != nil {
+			appKitErr = fmt.Errorf("load AppKit: %w", appKitErr)
+		}
+	})
+	return appKitErr
 }
 
-// New creates a MyGo-owned NSView and keeps its native object handle so the
-// application can release it deterministically after MPV has detached.
-func New() (VideoHost, error) {
-	host, err := NewHost()
-	if err != nil {
+// New creates an empty layer-backed NSView. It is called from MyGo's
+// application-ready callback, which runs on the AppKit main thread.
+func New() (*VideoHost, error) {
+	if err := loadAppKit(); err != nil {
 		return nil, err
 	}
-	objectProvider, ok := host.(interface{ NativeObject() *native.Object })
-	if !ok || objectProvider.NativeObject() == nil {
-		return nil, fmt.Errorf("MyGo native VideoHost did not expose its object handle")
+
+	nsViewClass := objc.GetClass("NSView")
+	if nsViewClass == 0 {
+		return nil, errors.New("AppKit did not register NSView")
 	}
-	return &ownedHost{Host: host, object: objectProvider.NativeObject()}, nil
+
+	view := objc.ID(nsViewClass).Send(selAlloc)
+	if view == 0 {
+		return nil, errors.New("allocate NSView")
+	}
+
+	view = view.Send(selInitWithFrame, nsRect{})
+	if view == 0 {
+		return nil, errors.New("initialize NSView")
+	}
+
+	// MPV observes these notifications to keep its drawable and Vulkan
+	// swapchain in sync with MyGo's layout and window changes.
+	view.Send(selSetWantsLayer, uintptr(1))
+	view.Send(selSetPostsBoundsNotifications, uintptr(1))
+	view.Send(selSetPostsFrameNotifications, uintptr(1))
+
+	return &VideoHost{view: view}, nil
 }
 
-func (h *ownedHost) Close() error {
-	if h == nil || h.object == nil {
+// NativeView is the NSView* consumed by ui.NativeView and libmpv's wid option.
+func (h *VideoHost) NativeView() uintptr {
+	if h == nil {
+		return 0
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return uintptr(h.view)
+}
+
+// Close releases Aurora's ownership after the libmpv player has detached.
+// MyGo separately releases the retain it takes while embedding the view.
+func (h *VideoHost) Close() error {
+	if h == nil {
 		return nil
 	}
-	err := h.object.Close()
-	h.object = nil
-	return err
+	h.closeOnce.Do(func() {
+		h.mu.Lock()
+		view := h.view
+		h.view = 0
+		h.mu.Unlock()
+
+		if view != 0 {
+			view.Send(selRemoveFromSuperview)
+			view.Send(selRelease)
+		}
+	})
+	return nil
 }

@@ -4,19 +4,19 @@
 
 Keep **libmpv** as Aurora's media engine. On macOS, reuse MPV 0.42.0's existing gpu-next + macvk renderer (Vulkan presented through Apple's Metal surface). Do not replace MPV's renderer with a new Swift/Metal renderer, do not use OpenGL, and do not introduce VLC.
 
-The implementation uses one small Aurora-maintained patch to make MPV's existing macOS video view a child of a MyGo-hosted NSView. It does not implement a second renderer.
+The implementation uses one small Aurora-maintained patch to make MPV's existing macOS video view a child of a Go-created, MyGo-hosted NSView. Aurora's application code remains Go-only. It does not implement a second renderer.
 
 ## What is implemented in this branch
 
 - third_party/mpv/patches/0001-macos-macvk-embed-nsview.patch: patch against MPV v0.42.0.
 - scripts/build-mpv-macos.sh: Apple Silicon build script for patched libmpv, with Vulkan/macvk/VideoToolbox enabled and OpenGL build features disabled.
-- internal/platform/macos/videohost: MyGo native module that creates a layer-backed NSView.
+- internal/platform/macos/videohost: Go-only NSView host created through the Objective-C runtime with the existing purego dependency. Aurora has no Swift module or Swift source.
 - internal/adapters/mpv/player_darwin.go: Darwin libmpv adapter. It passes the host NSView pointer through the macOS-specific wid contract and configures gpu-next, Vulkan, macvk and VideoToolbox.
 - internal/platform/macos/platform_darwin.go and internal/bootstrap/run_darwin.go: macOS composition root.
 - internal/application/ports.go and the MyGo presentation: platform-native video-host abstraction; Windows retains its existing HWND path, while macOS mounts the native view in the video stage.
 - internal/adapters/mpv/player_unsupported.go: now excludes both Windows and macOS so the Darwin adapter is selected on macOS.
 
-**Important:** this is source implementation, not a verified macOS build. This environment does not have macOS, Xcode, an Apple Silicon GPU, the Vulkan SDK or MoltenVK, so the MPV Swift/Objective-C patch and real Metal surface have not been compiled or run here.
+**Important:** this is source implementation, not a verified macOS build. Aurora's host and integration code are Go-only; the Swift files changed by the MPV patch are part of MPV's existing macOS Cocoa/macvk renderer. This environment does not have macOS, Xcode, an Apple Silicon GPU, the Vulkan SDK or MoltenVK, so the MPV patch and real Metal surface have not been compiled or run here.
 
 ## How the embedding works
 
@@ -28,7 +28,7 @@ MPV 0.42.0's existing macOS Vulkan context already does this:
 
 The Aurora patch changes only the host ownership and view sizing:
 
-1. MyGo creates and owns a layer-backed NSView for Aurora's video rectangle.
+1. Aurora creates a layer-backed NSView directly from Go with purego's Objective-C runtime calls. This happens in MyGo's application-ready callback on the AppKit main thread.
 2. Aurora keeps that native view mounted even before the first file is selected. This ensures the host already belongs to Aurora's window when libmpv initializes.
 3. Aurora passes the view pointer to the Darwin libmpv adapter.
 4. In the patched macOS macvk context, MPV interprets wid as that host NSView pointer.
@@ -53,7 +53,7 @@ The macOS-specific meaning of wid is an Aurora-patched MPV contract. It does not
 The first target is Apple Silicon arm64.
 
 Prerequisites:
-- Xcode Command Line Tools and a compatible Swift toolchain.
+- Xcode Command Line Tools and a compatible Swift toolchain (required by MPV's existing macOS renderer sources; Aurora itself does not build a Swift module).
 - Meson, Ninja, Git and pkg-config.
 - Vulkan SDK / MoltenVK, shaderc and libplacebo development packages visible to pkg-config.
 
@@ -83,7 +83,7 @@ The script does **not** yet copy all transitive dylib dependencies into the fina
 | Inspect Aurora's Windows/libmpv integration | Done |
 | Inspect MPV 0.42.0 macvk and Metal source | Done |
 | Add MPV macOS NSView embedding patch | Patch generated from and hunk-validated against upstream v0.42.0; not compiled |
-| Add MyGo Swift NSView host module | Source added; build check added to macOS CI |
+| Add Go/purego NSView host | Source added; no Aurora Swift module or Swift build step |
 | Add Darwin libmpv adapter and bootstrap | Source added; macOS CI compile check pending |
 | Keep host view mounted before first playback | Implemented in presentation source |
 | Build patched libmpv with OpenGL disabled | Pending real Mac |
@@ -117,5 +117,5 @@ The macOS renderer work is complete only when all of the following are demonstra
 - MPV macOS Vulkan context: https://github.com/mpv-player/mpv/blob/v0.42.0/video/out/vulkan/context_mac.m
 - MPV macOS Metal layer: https://github.com/mpv-player/mpv/blob/v0.42.0/video/out/mac/metal_layer.swift
 - MPV macOS view/window setup: https://github.com/mpv-player/mpv/tree/v0.42.0/video/out/mac
-- MyGo 0.9.2 native modules: https://github.com/egoist/mygo/blob/v0.9.2/docs/native-modules.md
-- MyGo 0.9.2 native view example: https://github.com/egoist/mygo/tree/v0.9.2/examples/native-module/modules/places
+- MyGo 0.9.2 native view embedding API: https://github.com/egoist/mygo/blob/v0.9.2/ui/webview.go
+- purego 0.11.1 Objective-C runtime API: https://github.com/ebitengine/purego/tree/v0.11.1/objc

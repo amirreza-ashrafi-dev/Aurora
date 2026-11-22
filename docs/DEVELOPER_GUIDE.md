@@ -4,7 +4,7 @@ This is the onboarding guide for developers new to Aurora. It explains the appli
 
 ## 1. What Aurora is
 
-Aurora Player is a Windows desktop video player written in Go. MyGo provides the desktop windows and UI, libmpv performs playback, and a Win32 adapter creates the native child window that displays video inside the MyGo main window.
+Aurora Player is a Windows desktop video player written in Go. MyGo provides the desktop windows and UI, libmpv performs playback, and a Win32 adapter creates the native child window that displays video inside the MyGo main window. Aurora also integrates with Windows Explorer so supported video files can be opened with Aurora and played directly.
 
 The application has a local playlist, normal and fullscreen playback controls, a windowed Cinematic Mode, playback history with Smart Resume, external subtitle tools, queue artwork thumbnails, an on-demand timeline filmstrip, and a memory diagnostics window.
 
@@ -138,21 +138,24 @@ Key contracts in internal/application/ports.go:
 - SubtitlePlayer: optional subtitle operations kept separate from the general playback contract.
 - SubtitlePreferencesRepository and SubtitleAssignmentRepository: read and write subtitle settings.
 - FilmstripGenerator: create or reuse a disk-cached filmstrip while honoring cancellation; the UI depends on this port, not on FFmpeg command details.
+- Video-file helpers: expose the canonical supported extensions, provide matching MyGo file-dialog filters, and validate paths received from Explorer.
 
 ## 6. Startup and shutdown
 
 ### Startup
 
-1. The main package calls bootstrap.Run.
+1. The main package calls bootstrap.Run, which requests MyGo's single-instance lock. If another Aurora process already owns the lock, the new process exits and MyGo forwards the open request to the existing process.
 2. bootstrap creates the Windows Platform.
-3. It creates a lazy PlayerFactory. The factory finds the packaged MPV DLL path and calls mpv.New with a video HWND when requested.
-4. It creates the history and subtitle JSON repositories under the user's configuration directory.
-5. It resolves MyGo's resources directory, creates the FFmpeg FilmstripGenerator, and injects it with the other application dependencies.
-6. It constructs presentation.App with the platform, player factory, repositories, and filmstrip generator.
-7. App.Run starts MyGo and registers onReady.
-8. onReady creates the MyGo main window and hidden STATIC Win32 child window, then installs double-click, file-drop, and mouse-wheel handlers.
-9. History, subtitle assignments, and subtitle preferences are loaded.
-10. libmpv is deliberately not initialized yet. It is created by ensurePlayer when the first valid video is added; FFmpeg is launched only when filmstrip generation is requested.
+3. It resolves the executable path and calls RegisterFileAssociations. Registry registration is best-effort: failures are logged but do not prevent Aurora from starting.
+4. It creates a lazy PlayerFactory. The factory finds the packaged MPV DLL path and calls mpv.New with a video HWND when requested.
+5. It creates the history and subtitle JSON repositories under the user's configuration directory.
+6. It resolves MyGo's resources directory, creates the FFmpeg FilmstripGenerator, and injects it with the other application dependencies.
+7. It constructs presentation.App with the platform, player factory, repositories, and filmstrip generator.
+8. Before App.Run, bootstrap registers MyGo's OnOpenFile callback to queue incoming paths and OnSecondInstance to restore and focus the existing window.
+9. App.Run starts MyGo and registers onReady.
+10. onReady creates the MyGo main window and hidden STATIC Win32 child window, then installs double-click, file-drop, and mouse-wheel handlers.
+11. History, subtitle assignments, and subtitle preferences are loaded. OnReadyToShow marks the window ready and drains any video paths that arrived during startup.
+12. libmpv is deliberately not initialized yet. It is created by ensurePlayer when the first valid video is added; FFmpeg is launched only when filmstrip generation is requested.
 
 ~~~mermaid
 sequenceDiagram
@@ -175,6 +178,8 @@ sequenceDiagram
     App->>MPV: ensurePlayer() on first valid video
     MPV-->>App: Player attached to child HWND
 ~~~
+
+The Explorer callbacks are registered before the MyGo event loop starts. A path received before the main window is ready stays queued until OnReadyToShow; once the window exists, queued paths are processed on the MyGo UI thread. Later opens are forwarded to the same process and activate its window.
 
 Lazy initialization means an empty Aurora window does not load MPV's decoder and video renderer. FFmpeg is also lazy: no child process starts until the user opens the timeline filmstrip and a cache miss requires extraction.
 
@@ -209,6 +214,13 @@ If any paths are accepted, addFiles calls ensurePlayer. On an empty queue, the a
 
 The application playlist slice and MPV's native playlist are two views of the same ordered list. A queue change must keep both indexes aligned.
 
+### Opening videos from Windows Explorer
+
+`mygo.json` declares the supported extensions with MyGo's `fileAssociations` setting for packaged Windows builds. At runtime, `bootstrap.Run` requests a single-instance lock and calls `platform/windows.RegisterFileAssociations`. The Windows implementation writes an Aurora-specific ProgID, Open with entries, and a Default Apps capability under `HKEY_CURRENT_USER`. It does not change existing default applications, and registration errors are logged rather than treated as fatal startup errors.
+
+`application/video_files.go` is the single source of truth for supported extensions. `SupportedVideoExtensions` supplies the registry registration list, `VideoFileDialogExtensions` supplies the same extensions to the file picker, and `FilterVideoLaunchPaths` rejects unsupported Explorer launch paths. `FilterNewMedia` then performs the normal existence, regular-file, and duplicate checks.
+
+MyGo delivers Explorer opens through `OnOpenFile`. `QueueOpenFile` collects its one-callback-per-file notifications with a short debounce and holds paths until the main window is ready. The presentation layer processes the collected paths on the UI thread. `openFilesFromExplorer` saves the current progress, clears the previous queue and related transient state, and calls `addFiles` to start the newly selected media. It deliberately replaces the queue rather than appending to it. `OnSecondInstance` calls `Activate` to restore and focus Aurora when the shell starts a second process.
 ### Removing a queue item
 
 The row's close button records a path for deferred removal and requests a follow-up UI frame. The app applies pending removals at the start of the next view, before MyGo builds the virtual list. This avoids modifying the playlist slice while the list builder is still reading it.
@@ -356,7 +368,7 @@ Keep the view declarative. Read App state and call a focused App method from Cli
 |---|---|
 | go.mod | Module path, Go version, MyGo tool dependency, direct/indirect Go modules |
 | go.sum | Dependency checksums |
-| mygo.json | App name/identifier/version, build output, bundled MPV DLL and FFmpeg resources, executable icon |
+| mygo.json | App name/identifier/version, build output, bundled MPV DLL and FFmpeg resources, executable icon, and packaged Windows video file associations |
 | makefile | build_windows convenience target |
 | .gitattributes | Git LFS rules for the MPV DLLs and FFmpeg executable |
 | .gitignore | Excludes build/, .mygo/, generated Windows resource object |

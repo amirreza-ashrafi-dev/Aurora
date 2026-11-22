@@ -1,0 +1,297 @@
+diff --git a/video/out/mac_common.swift b/video/out/mac_common.swift
+--- a/video/out/mac_common.swift
++++ b/video/out/mac_common.swift
+@@ -19,16 +19,23 @@
+ 
+ class MacCommon: Common {
+     @objc var layer: MetalLayer?
++    private var embeddedHostView: NSView?
++    private var hostViewObservers: [NSObjectProtocol] = []
++    private var hostWindowObservers: [NSObjectProtocol] = []
++    private weak var observedHostWindow: NSWindow?
+ 
+     var presentation: Presentation?
+     var timer: PreciseTimer?
+     var swapTime: UInt64 = 0
+     let swapLock: NSCondition = NSCondition()
+ 
+-    @objc init(_ vo: UnsafeMutablePointer<vo>) {
++    @objc init(_ vo: UnsafeMutablePointer<vo>, hostView: UnsafeMutableRawPointer?) {
+         let log = LogHelper(mp_log_new(vo, vo.pointee.log, "mac"))
+         let option = OptionHelper(vo, vo.pointee.global)
+         super.init(option, log)
++        if let hostView = hostView {
++            embeddedHostView = Unmanaged<NSView>.fromOpaque(hostView).takeUnretainedValue()
++        }
+         eventsLock.withLock { self.vo = vo }
+         input = InputHelper(vo.pointee.input_ctx, option)
+         presentation = Presentation(common: self)
+@@ -44,6 +51,18 @@
+         eventsLock.withLock { self.vo = vo }
+ 
+         DispatchQueue.main.sync {
++            if let host = self.embeddedHostView {
++                guard let layer = self.layer else {
++                    log.error("Something went wrong, no MetalLayer was initialized")
++                    return
++                }
++                self.initEmbeddedView(layer, host: host)
++                self.observeEmbeddedHost()
++                self.updateEmbeddedViewMetrics()
++                self.updateICCProfile()
++                return
++            }
++
+             let previousActiveApp = getActiveApp()
+             initApp()
+ 
+@@ -76,6 +95,93 @@
+         return true
+     }
+ 
++
++    // Embedded mode reuses MPV's MetalLayer and Vulkan surface while Aurora
++    // owns the top-level window. MPV's input view becomes a child of Aurora's NSView.
++    private func initEmbeddedView(_ metalLayer: MetalLayer, host: NSView) {
++        let embedded = View(frame: host.bounds, common: self)
++        embedded.autoresizingMask = [.width, .height]
++        embedded.layer = metalLayer
++        embedded.wantsLayer = true
++        embedded.layerContentsPlacement = .scaleProportionallyToFit
++        metalLayer.delegate = embedded
++        host.addSubview(embedded)
++        view = embedded
++    }
++
++    private func observeEmbeddedHost() {
++        guard let host = embeddedHostView else { return }
++        let center = NotificationCenter.default
++
++        if hostViewObservers.isEmpty {
++            host.postsBoundsChangedNotifications = true
++            host.postsFrameChangedNotifications = true
++            for name in [NSView.boundsDidChangeNotification, NSView.frameDidChangeNotification] {
++                hostViewObservers.append(center.addObserver(
++                    forName: name, object: host, queue: .main
++                ) { [weak self] _ in
++                    self?.updateEmbeddedViewMetrics()
++                })
++            }
++        }
++
++        guard let hostWindow = host.window, observedHostWindow !== hostWindow else { return }
++        hostWindowObservers.forEach { center.removeObserver($0) }
++        hostWindowObservers.removeAll()
++        observedHostWindow = hostWindow
++        for name in [
++            NSWindow.didChangeScreenNotification,
++            NSWindow.didChangeBackingPropertiesNotification,
++            NSWindow.didChangeOcclusionStateNotification,
++            NSWindow.didBecomeKeyNotification,
++            NSWindow.didResignKeyNotification
++        ] {
++            hostWindowObservers.append(center.addObserver(
++                forName: name, object: hostWindow, queue: .main
++            ) { [weak self] _ in
++                self?.updateEmbeddedViewMetrics()
++                self?.updateICCProfile()
++                self?.updateDisplaylink()
++            })
++        }
++    }
++
++    @objc func embeddedViewDidMoveToWindow() {
++        guard embeddedHostView != nil else { return }
++        observeEmbeddedHost()
++        updateEmbeddedViewMetrics()
++    }
++
++    @objc func embeddedViewDidResize() {
++        guard embeddedHostView != nil else { return }
++        updateEmbeddedViewMetrics()
++    }
++
++    private func updateEmbeddedViewMetrics() {
++        guard let host = embeddedHostView, let view = view else { return }
++        if view.superview !== host {
++            host.addSubview(view)
++        }
++        if view.frame != host.bounds {
++            view.frame = host.bounds
++        }
++
++        let scale = host.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 1.0
++        view.layer?.contentsScale = scale
++        if let metalLayer = layer {
++            metalLayer.contentsScale = scale
++            metalLayer.drawableSize = view.convertToBacking(view.bounds).size
++        }
++
++        windowDidResize()
++        flagEvents(VO_EVENT_DPI | VO_EVENT_WIN_STATE)
++    }
++
++    @objc func drawableSize() -> CGSize {
++        guard let view = view else { return .zero }
++        return view.convertToBacking(view.bounds).size
++    }
++
+     @objc func uninit(_ vo: UnsafeMutablePointer<vo>) {
+         window?.waitForAnimation()
+ 
+@@ -85,7 +191,15 @@
+             window?.delegate = nil
+             window?.close()
+ 
++            let center = NotificationCenter.default
++            hostViewObservers.forEach { center.removeObserver($0) }
++            hostWindowObservers.forEach { center.removeObserver($0) }
++            hostViewObservers.removeAll()
++            hostWindowObservers.removeAll()
++            observedHostWindow = nil
++
+             uninitCommon()
++            embeddedHostView = nil
+         }
+     }
+ 
+@@ -110,6 +224,12 @@
+     }
+ 
+     @objc func isVisible() -> Bool {
++        if let host = embeddedHostView {
++            let hostVisible = host.window?.occlusionState.contains(.visible) ?? false
++            let viewVisible = !host.isHiddenOrHasHiddenAncestor &&
++                              !(view?.isHiddenOrHasHiddenAncestor ?? false)
++            return (hostVisible && viewVisible) || option.vo.force_render
++        }
+         return window?.occlusionState.contains(.visible) ?? false ||
+                option.vo.force_render ||
+                needsInitialDraw
+@@ -117,9 +237,11 @@
+ 
+     @objc func update(alpha: Bool) {
+         layer?.wantsAlpha = alpha
+-        DispatchQueue.main.sync {
+-            window?.isOpaque = !alpha
+-            window?.backgroundColor = alpha ? NSColor.clear : nil
++        if embeddedHostView == nil {
++            DispatchQueue.main.sync {
++                window?.isOpaque = !alpha
++                window?.backgroundColor = alpha ? NSColor.clear : nil
++            }
+         }
+     }
+ 
+diff --git a/video/out/mac/common.swift b/video/out/mac/common.swift
+--- a/video/out/mac/common.swift
++++ b/video/out/mac/common.swift
+@@ -188,7 +188,7 @@
+     }
+ 
+     func updateDisplaylink() {
+-        guard let screen = window?.screen, let link = self.link else {
++        guard let screen = view?.window?.screen ?? window?.screen, let link = self.link else {
+             log.warning("Couldn't update DisplayLink, no Screen or DisplayLink available")
+             return
+         }
+@@ -404,9 +404,8 @@
+     }
+ 
+     func getCurrentScreen() -> NSScreen? {
+-         return window != nil ? window?.screen :
+-                                    getTargetScreen(forFullscreen: false) ??
+-                                    NSScreen.main
++        return view?.window?.screen ?? window?.screen ??
++               getTargetScreen(forFullscreen: false) ?? NSScreen.main
+     }
+ 
+     func getWindowGeometry(forScreen screen: NSScreen,
+diff --git a/video/out/mac/view.swift b/video/out/mac/view.swift
+--- a/video/out/mac/view.swift
++++ b/video/out/mac/view.swift
+@@ -40,8 +40,10 @@
+         common = com
+         super.init(frame: frame)
+         autoresizingMask = [.width, .height]
+-        wantsBestResolutionOpenGLSurface = true
+-        wantsExtendedDynamicRangeOpenGLSurface = true
++        if !(com is MacCommon) {
++            wantsBestResolutionOpenGLSurface = true
++            wantsExtendedDynamicRangeOpenGLSurface = true
++        }
+         registerForDraggedTypes([ .fileURL, .URL, .string ])
+     }
+ 
+@@ -49,6 +51,16 @@
+         fatalError("init(coder:) has not been implemented")
+     }
+ 
++    override func viewDidMoveToWindow() {
++        super.viewDidMoveToWindow()
++        (common as? MacCommon)?.embeddedViewDidMoveToWindow()
++    }
++
++    override func setFrameSize(_ newSize: NSSize) {
++        super.setFrameSize(newSize)
++        (common as? MacCommon)?.embeddedViewDidResize()
++    }
++
+     override func updateTrackingAreas() {
+         if let tracker = self.tracker {
+             removeTrackingArea(tracker)
+@@ -188,7 +200,7 @@
+         var topMargin: CGFloat = 0.0
+         let menuBarHeight = NSApp.mainMenu?.menuBarHeight ?? 23.0
+ 
+-        guard let window = common.window else { return false }
++        guard let window = self.window else { return false }
+         guard var vF = window.screen?.frame else { return false }
+ 
+         if window.isInFullscreen && (menuBarHeight > 0) {
+@@ -210,7 +222,7 @@
+     }
+ 
+     func canHideCursor() -> Bool {
+-        guard let window = common.window else { return false }
++        guard let window = self.window else { return false }
+         return !hasMouseDown && containsMouseLocation() && window.isKeyWindow
+     }
+ }
+diff --git a/video/out/vulkan/context_mac.m b/video/out/vulkan/context_mac.m
+--- a/video/out/vulkan/context_mac.m
++++ b/video/out/vulkan/context_mac.m
+@@ -16,6 +16,7 @@
+  */
+ 
+ #import <QuartzCore/QuartzCore.h>
++#import <stdint.h>
+ 
+ #include "video/out/gpu/context.h"
+ #include "osdep/mac/swift.h"
+@@ -75,7 +76,11 @@
+     if (!mpvk_init(vk, ctx, VK_EXT_METAL_SURFACE_EXTENSION_NAME))
+         goto error;
+ 
+-    p->vo_mac = [[MacCommon alloc] init:ctx->vo];
++    // Aurora supplies an NSView through the macOS-specific embedded wid mode.
++    // MPV still owns the MetalLayer and the Vulkan surface attached to it.
++    void *hostView = ctx->vo->opts->WinID > 0
++        ? (void *)(intptr_t)ctx->vo->opts->WinID : NULL;
++    p->vo_mac = [[MacCommon alloc] init:ctx->vo hostView:hostView];
+     if (!p->vo_mac)
+         goto error;
+ 
+@@ -114,10 +119,10 @@
+ {
+     struct priv *p = ctx->priv;
+ 
+-    if (!p->vo_mac.window) {
++    CGSize size = [p->vo_mac drawableSize];
++    if (size.width < 1 || size.height < 1) {
+         return false;
+     }
+-    CGSize size = p->vo_mac.window.framePixel.size;
+ 
+     return ra_vk_ctx_resize(ctx, (int)size.width, (int)size.height);
+ }

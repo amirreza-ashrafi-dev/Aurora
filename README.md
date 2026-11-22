@@ -26,6 +26,7 @@ The goal is simple: make watching videos feel effortless.
 - External subtitle loading, strict filename matching, per-video external subtitle restoration, drag-and-drop, custom text/outline colors, and language-specific appearance profiles
 - Keyboard shortcuts for playback, seeking, volume, fullscreen, and Cinematic Mode
 - On-demand visual timeline filmstrip with progressive FFmpeg thumbnail generation and a persistent disk cache
+- Open supported video files directly from Windows File Explorer through Open with or Default Apps
 
 ### Cinematic Mode
 
@@ -46,6 +47,16 @@ Open the filmstrip from the playback controls to browse preview frames across th
 Dragging the timeline or choosing a thumbnail changes the preview position without repeatedly seeking the video. Aurora commits one precise seek when the interaction is released; canceling a drag restores the committed playback position. Completed thumbnails are kept in a persistent cache, while decoded UI bitmaps are kept within a small memory limit.
 
 FFmpeg is used only for this optional feature. Normal playback continues to use libmpv, so a missing FFmpeg executable does not prevent the player from opening or playing videos.
+
+## Open videos from Windows File Explorer
+
+Aurora registers itself as an **Open with** option and advertises its supported video types in Windows **Default apps** for the current Windows user. The MyGo package configuration also declares the same extensions for packaged Windows builds. Registration does not take over existing defaults; choose Aurora explicitly for the file types you want.
+
+To use it, right-click a video and select **Open with → Aurora Player**, or open **Settings → Apps → Default apps** and choose Aurora for the extensions you want. Once selected as the default, double-clicking those videos starts playback in Aurora.
+
+Opening a video while Aurora is already running forwards the request to the existing window. Explorer multi-select requests are grouped into one queue and replace the current playback queue rather than being appended to it.
+
+Supported extensions: MP4, MKV, AVI, MOV, WMV, WebM, M4V, MPG, MPEG, TS, M2TS, FLV, OGV, and 3GP. If Aurora is moved to another folder, launch it once from the new location so Windows can refresh the registered executable path.
 
 ## Technology
 

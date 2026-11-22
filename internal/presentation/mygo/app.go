@@ -266,6 +266,9 @@ func (a *App) onReady() {
 	a.win.OnMove(func() {
 		a.win.Invalidate()
 		a.updateControllerBounds()
+		// Re-anchor owned overlays after a cross-monitor move. MyGo resolves
+		// the flyout against the monitor containing its parent/anchor.
+		a.syncPlaylistSidebarPresentation()
 		a.logDiagnostics("move")
 	})
 	a.win.OnEnterFullScreen(func() {

@@ -54,10 +54,12 @@ func (a *App) showPlaylistSidebarFlyout() {
 		})
 		a.playlistFlyoutAnchor = anchor
 	} else {
-		if anchor != a.playlistFlyoutAnchor {
-			a.playlistFlyout.SetAnchor(anchor)
-			a.playlistFlyoutAnchor = anchor
-		}
+		// The anchor is window-local, so its rectangle can be unchanged when
+		// the player moves to another monitor. SetAnchor deliberately runs on
+		// every show to make MyGo resolve the flyout against the parent's
+		// current display and work area.
+		a.playlistFlyout.SetAnchor(anchor)
+		a.playlistFlyoutAnchor = anchor
 		a.playlistFlyout.SetSize(auroraQueueWidth+24, height)
 	}
 	if !a.playlistFlyout.IsVisible() { a.playlistFlyout.ShowInactive() }

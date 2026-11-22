@@ -1,129 +1,113 @@
-# macOS libmpv embedding spike
+# Reuse MPV's macvk Metal renderer inside Aurora
 
-## Goal
+## Decision
 
-Keep libmpv as Aurora's media engine on Windows and macOS. On macOS, render through MPV's Vulkan `macvk` context (which presents through a Metal surface) and embed that rendering inside Aurora's MyGo window. OpenGL is not an acceptable production dependency.
+Keep **libmpv** as Aurora's media engine. On macOS, reuse MPV 0.42's existing `gpu-next` + `macvk` rendering path (Vulkan presented through Apple's Metal surface). Do not replace MPV's renderer with a new Swift/Metal renderer, do not use OpenGL, and do not introduce VLC.
 
-This is a technical spike, not a commitment to ship an unsupported integration. The spike must prove the complete path before the application architecture is changed.
+This work has one implementation target: **make MPV's existing macvk output attach to a native view supplied by Aurora/MyGo instead of creating its own top-level MPV window.**
 
-## Current Aurora baseline
+## Why a source change is required
 
-The spike starts from `feature/thumbnail-filmstrip` without changing that branch.
+The current MPV 0.42 `macvk` implementation creates its own `MacCommon`, `MetalLayer`, MPV `View` and MPV `Window`:
 
-- The application-facing `application.Player` interface is already independent of the concrete MPV implementation.
-- The current `PlayerFactory` accepts a `uintptr` named `videoHWND`, and `NativePlatform` is Win32-specific: it creates an HWND child, handles Win32 input and lays out that child.
-- `internal/adapters/mpv/player_windows.go` loads `libmpv-2.dll`, passes the HWND through MPV's `wid` option and configures `vo=gpu` with `gpu-api=d3d11`.
-- `internal/bootstrap/run.go` directly constructs the Windows platform and player.
-- The app currently pins MyGo `v0.9.2`.
-- FFmpeg filmstrip extraction is a separate adapter and should remain separate from the playback backend.
+- `video/out/vulkan/context_mac.m` constructs `MacCommon` and gives Vulkan the `CAMetalLayer` from it.
+- `video/out/mac_common.swift` creates the `MetalLayer`, creates the view and creates the MPV-owned window in `config()`.
+- `video/out/mac/view.swift` is MPV's native view and handles MPV input events.
+- `video/out/mac/metal_layer.swift` is the existing `CAMetalLayer` subclass, including its color/HDR handling.
+- MPV's `wid` option is an `int64_t` option, but upstream only documents native window embedding for X11, Win32 and Android. It does not currently define an NSView embedding contract on macOS.
 
-This means macOS needs a native-view host and a Darwin MPV adapter, as well as a later platform-neutral refactor of the HWND-specific presentation port. Do not refactor the Windows implementation as part of the first renderer experiment.
+Therefore, simply passing a MyGo NSView through `wid` will not work with an unmodified MPV build.
 
-## Findings that shape this spike
+## The implementation to make
 
-### MyGo can host a native macOS view
+### 1. Add a macOS host-view mode to MPV's existing macvk output
 
-MyGo's `ui.NativeView` accepts a native module value that implements `native.View`. On macOS the view is an `NSView`; MyGo places it in the UI layout, sizes it to the element, clips it and draws subsequent UI content above it. MyGo native modules can implement the view in Swift.
+Maintain a small Aurora patch/fork against a pinned MPV 0.42.0 source revision.
 
-References:
+Use MPV's existing `wid` value as the macOS host `NSView` pointer in this explicit embedded mode. Document that macOS-specific meaning and validate the pointer before use. Do not change the meaning of `wid` on Windows, X11 or Android.
 
-- MyGo v0.9.2 native-module documentation: https://github.com/egoist/mygo/blob/v0.9.2/docs/native-modules.md
-- MyGo v0.9.2 native view example: https://github.com/egoist/mygo/tree/v0.9.2/examples/native-module/modules/places
-- MyGo UI NativeView API: https://pkg.go.dev/github.com/egoist/mygo@v0.9.2/ui
+Inside `MacCommon`:
 
-### MPV 0.42 has a Metal-backed macOS renderer, but it is not currently an embedded-view API
+1. Keep creating MPV's existing `MetalLayer`. Do not replace it.
+2. Keep creating MPV's existing `View` so MPV's existing input/event handling remains available.
+3. When a host NSView is supplied, attach that MPV view as a child of the host view, sized to the host bounds with autoresizing/layout updates.
+4. Do **not** create an MPV-owned `NSWindow`, do not activate a second application window, and do not apply MPV window/fullscreen/title-bar behavior in embedded mode.
+5. When no host view is supplied, preserve MPV's existing standalone macOS behavior unchanged.
 
-MPV 0.42 documents `gpu-context=macvk` as Vulkan on macOS using a Metal surface through a translation layer. The manual labels it experimental. The release also adds a D3D11 backend to the libmpv render API, but that is not a Metal/Vulkan render API.
+Inside `context_mac.m`, continue passing the same MPV-owned `MetalLayer` to `VkMetalSurfaceCreateInfoEXT.pLayer`. Keep `vkCreateMetalSurfaceEXT`, Vulkan swapchain, MPV's GPU rendering pipeline and frame presentation path unchanged.
 
-Important source-level details from MPV v0.42.0:
+Adapt only the host-dependent parts of the existing `MacCommon`/macOS view integration:
 
-- `video/out/vulkan/context_mac.m` creates a Vulkan Metal surface using `p->vo_mac.layer`.
-- `video/out/mac/metal_layer.swift` defines MPV's `CAMetalLayer` subclass.
-- `video/out/mac/common.swift` creates MPV's own view and calls `initWindow`.
-- `video/out/mac/window.swift` creates an MPV-owned `NSWindow` and adds MPV's view to that window.
-- The documented `wid` option lists X11, Win32 and Android native handles; it does not document an `NSView` embedding target for macOS.
+- Resize the Vulkan surface from the hosted view's backing-pixel bounds.
+- Determine visibility from the hosted view and its containing window.
+- Read backing scale, display and color profile from the containing Aurora window/screen.
+- React to host-window resize, backing-scale, screen/color-profile, occlusion and layout changes.
+- Let Aurora own fullscreen and top-level window lifecycle; MPV's embedded mode must never create or resize a separate top-level window.
+- Preserve correct teardown: stop rendering before the host view is released, remove MPV's child view, release the Metal layer and Vulkan resources, and never close Aurora's window.
+- Keep MPV input event handling on its child view where appropriate; Aurora remains responsible for app-level shortcuts and controls.
 
-References:
+The host view must be supplied before MPV initializes the video output. The embedding contract must be explicit and versioned/documented in the Aurora-patched MPV build.
 
-- MPV 0.42.0 manual: https://mpv.io/manual/stable/
+### 2. Host that MPV view from MyGo
+
+Use a MyGo native module implemented in Swift to create a plain container `NSView`. Return it through MyGo's `native.View` interface and place it with `ui.NativeView` in Aurora's video rectangle.
+
+Pass the native view pointer to the patched libmpv instance through the macOS embedded `wid` contract before `mpv_initialize`.
+
+MyGo remains responsible for the Aurora window and layout. MPV remains responsible for playback and for presenting its own existing Metal layer inside the hosted child view. Aurora's Go controls can continue to be layered above the native view by MyGo.
+
+### 3. Keep the Windows path unchanged
+
+- Windows continues using the existing `HWND`, `wid`, `vo=gpu`, `gpu-api=d3d11` implementation.
+- macOS uses the hosted NSView mode and `vo=gpu-next`, `gpu-api=vulkan`, `gpu-context=macvk`.
+- Both platforms continue using the same libmpv playback engine and Aurora application-level player contract.
+- FFmpeg filmstrip generation remains its own adapter.
+
+The current Aurora application port is still Win32-shaped (`uintptr` HWND methods and a `videoHWND` factory parameter). Generalize that port only as needed to carry a native video-host handle and platform operations; keep the existing Windows implementation behavior unchanged.
+
+## Required build configuration
+
+Build and bundle a pinned MPV 0.42.0 macOS libmpv with:
+
+- `vo=gpu-next`
+- Vulkan enabled
+- `macvk` enabled
+- MoltenVK / Vulkan Metal-surface support
+- VideoToolbox hardware decoding enabled
+- OpenGL excluded from Aurora's macOS runtime rendering path
+
+Start with Apple Silicon arm64. Consider universal packaging only after the arm64 build and embedding path are stable.
+
+## Acceptance criteria
+
+This implementation is complete only when the **existing macvk renderer** is demonstrably rendering inside Aurora's MyGo video rectangle:
+
+1. No separate MPV window appears; the video is a child view inside Aurora.
+2. MPV logs confirm `gpu-next` + `macvk`; no OpenGL context or output is created.
+3. Vulkan creates its Metal surface using MPV's existing `MetalLayer`.
+4. Hardware decoding uses VideoToolbox where supported by the Mac and codec.
+5. The hosted view handles resize, Retina scale, display changes, occlusion and Aurora fullscreen transitions.
+6. MyGo controls and overlays remain visible above the video.
+7. Playback audio stays synchronized; seeking and media switching remain stable.
+8. Embedded/external subtitles, including ASS styling and positioning, retain MPV behavior.
+9. Test H.264, 4K HEVC, MKV with multiple audio tracks, external SRT and embedded ASS.
+10. Closing/reopening the host does not leak or invalidate MPV/Metal/Vulkan resources.
+11. Windows playback and packaging remain unchanged.
+
+## Sources reviewed
+
 - MPV 0.42.0 release: https://github.com/mpv-player/mpv/releases/tag/v0.42.0
-- macOS Vulkan context: https://github.com/mpv-player/mpv/blob/v0.42.0/video/out/vulkan/context_mac.m
-- macOS Metal layer: https://github.com/mpv-player/mpv/blob/v0.42.0/video/out/mac/metal_layer.swift
-- macOS view/window setup: https://github.com/mpv-player/mpv/tree/v0.42.0/video/out/mac
+- MPV macOS Vulkan context: https://github.com/mpv-player/mpv/blob/v0.42.0/video/out/vulkan/context_mac.m
+- MPV macOS Metal layer: https://github.com/mpv-player/mpv/blob/v0.42.0/video/out/mac/metal_layer.swift
+- MPV macOS view/window setup: https://github.com/mpv-player/mpv/blob/v0.42.0/video/out/mac_common.swift
+- MyGo 0.9.2 native modules: https://github.com/egoist/mygo/blob/v0.9.2/docs/native-modules.md
+- MyGo 0.9.2 native view example: https://github.com/egoist/mygo/tree/v0.9.2/examples/native-module/modules/places
 
-**Conclusion:** Passing MyGo's `NSView` to the existing `wid` option is not a supported solution. MPV's `macvk` renderer currently creates and manages its own window/view. The spike must prove how to reuse MPV's Metal renderer inside an Aurora-owned view.
+## Status
 
-## Proposed experiment
-
-### POC 1 — Prove the MyGo host view
-
-Create a minimal MyGo native module in Swift that returns a plain `NSView` suitable as an Aurora video host. Show it with `ui.NativeView` in a small test window, with Go-drawn controls above it.
-
-Verify on an actual macOS machine:
-
-- the view is embedded in the intended rectangle;
-- resize and Retina/backing-scale changes are correct;
-- clipping, hiding/showing and overlay controls work;
-- the view and its native resources are released on close.
-
-This validates the MyGo side only. It does not validate MPV embedding.
-
-### POC 2 — Reuse MPV's existing macvk Metal renderer
-
-Build a pinned MPV 0.42.0 macOS library with `gpu-next` and `macvk`. First verify standalone playback with an explicit no-OpenGL configuration:
-
-```sh
-mpv --vo=gpu-next --gpu-api=vulkan --gpu-context=macvk --hwdec=videotoolbox sample.mkv
-```
-
-Then investigate a small, isolated MPV patch that lets the macOS `macvk` output use a host `NSView` instead of creating its own top-level `NSWindow`. Keep MPV's own Metal layer and rendering pipeline; do not implement a second video renderer unless this experiment proves it is unavoidable.
-
-The patch must also define how the hosted view gets its size, display, screen scale, visibility, focus and input events from the MyGo window. The MyGo application owns the top-level window and fullscreen behavior; MPV must not create a competing top-level player window in the embedded mode.
-
-If the current macvk implementation cannot be cleanly adapted to an externally hosted view, stop and compare the cost of a maintained MPV fork against a different rendering integration before proceeding.
-
-### POC 3 — Connect libmpv to the host
-
-Only after POC 1 and POC 2 succeed:
-
-- expose a narrow, versioned host-view entry point from the patched macOS libmpv build (for example, an Aurora-specific function that accepts the host `NSView` before MPV initialization);
-- call it from a Darwin adapter using the same application-level playback contract as Windows;
-- keep the MPV engine responsible for demuxing, decoding, audio, subtitle rendering, filters and playback state;
-- keep MyGo responsible for Aurora's UI, native window and placement of the video host.
-
-Do not pass an `NSView` to MPV's `wid` option: that option is not documented for macOS.
-
-## Acceptance checks
-
-The spike is successful only when all of the following are demonstrated on real Mac hardware:
-
-1. The video is visibly embedded inside Aurora's MyGo window, not in a separate MPV window.
-2. No OpenGL context, framework or renderer is used by the production path. Verify through MPV logs and runtime inspection.
-3. MPV uses `gpu-next` + `macvk` and VideoToolbox hardware decoding where the test codec/device supports it.
-4. Resizing, Retina scale, clipping, overlays, hide/show, app fullscreen, app activation and window close/reopen behave correctly.
-5. Audio remains synchronized during playback and seeking.
-6. Embedded and external subtitles work, including ASS positioning and styling.
-7. The test set includes H.264, HEVC 4K, MKV with multiple audio tracks, external SRT and embedded ASS.
-8. There are no avoidable GPU-to-CPU readbacks in the normal video presentation path.
-9. The existing Windows build and playback path remain unchanged.
-
-Record MPV version/build flags, macOS version, Mac model/chip, test media details, MPV logs and any rendering/decoding fallback for every test run.
-
-## Explicit non-goals for this spike
-
-- Do not replace libmpv with VLC.
-- Do not replace the Windows D3D11 integration.
-- Do not move filmstrip generation into MPV.
-- Do not port all Aurora features yet.
-- Do not claim macOS support based only on a successful Go cross-compile. The rendering, native view and hardware-decoding checks require a real Mac.
-
-## Current status
-
-- [x] Inspected Aurora's current Windows MPV adapter and application ports.
-- [x] Confirmed the pinned MyGo version and reviewed its v0.9.2 native-view module example.
-- [x] Reviewed MPV v0.42.0 macvk source and documentation.
-- [ ] Build and run the MyGo native-view host POC on macOS.
-- [ ] Verify standalone MPV 0.42 macvk + VideoToolbox on target Mac hardware.
-- [ ] Implement and test the smallest MPV host-view patch.
-- [ ] Demonstrate libmpv rendering inside the MyGo view with no OpenGL.
-- [ ] Only then design the production Darwin platform adapter and app bootstrap.
+- [x] Inspected Aurora's current Win32/libmpv integration.
+- [x] Inspected MPV 0.42.0's existing macvk, Metal layer and macOS view/window code.
+- [x] Confirmed MyGo 0.9.2 can host a Swift-backed NSView.
+- [ ] Implement MPV's embedded-host mode while reusing the existing macvk Metal layer and Vulkan surface.
+- [ ] Build the patched macOS libmpv and integrate its native host handle into Aurora.
+- [ ] Verify on a real Apple Silicon Mac against the acceptance criteria above.

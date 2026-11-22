@@ -70,7 +70,7 @@ func (a *App) normalView(c *ui.Context) {
 					}
 					videoStage.Bind(&a.videoStageHandle)
 
-					if a.playlistSidebarOpen {
+					if a.playlistSidebarOpen && !a.isPlaylistOverlayMode() {
 						ui.Column(c).
 							Width(auroraQueueWidth).Shrink(0).FillHeight().MinHeight(0).
 							Padding(16).Gap(12).

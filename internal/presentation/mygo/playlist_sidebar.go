@@ -39,7 +39,7 @@ func (a *App) playlistSidebarFlyoutTarget() (mygo.Rectangle, int, bool) {
 	if a == nil || a.win == nil || a.win.IsDestroyed() { return mygo.Rectangle{}, 0, false }
 	bounds := a.win.ContentBounds()
 	if bounds.Width < 1 || bounds.Height < 1 { return mygo.Rectangle{}, 0, false }
-	return mygo.Rectangle{X: 0, Y: bounds.Height / 2, Width: 1, Height: 1}, bounds.Height, true
+	return mygo.Rectangle{X: bounds.Width, Y: bounds.Height / 2, Width: 1, Height: 1}, bounds.Height, true
 }
 
 func (a *App) showPlaylistSidebarFlyout() {
@@ -47,7 +47,7 @@ func (a *App) showPlaylistSidebarFlyout() {
 	if !ok { return }
 	if a.playlistFlyout == nil || a.playlistFlyout.IsDestroyed() {
 		a.playlistFlyout = mygo.NewFlyout(mygo.FlyoutOptions{
-			Parent: a.win, Anchor: anchor, Placement: mygo.PlacementRight,
+			Parent: a.win, Anchor: anchor, Placement: mygo.PlacementLeft,
 			Gap: 0, Width: auroraQueueWidth + 24, Height: height,
 			Focusable: false, Hidden: true,
 			Content: ui.View(a.playlistSidebarFlyoutView),

@@ -4,6 +4,10 @@ package presentation
 // the MyGo event loop has returned, even after partial initialization.
 func (a *App) Close() {
 	a.closeOnce.Do(func() {
+		if a.startupFilesTimer != nil {
+			a.startupFilesTimer.Stop()
+			a.startupFilesTimer = nil
+		}
 		a.closeSubtitleFlyout()
 		a.closeFullscreenSubtitleFlyout()
 		a.closeResumeBanner()

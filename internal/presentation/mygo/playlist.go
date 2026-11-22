@@ -11,6 +11,16 @@ import (
 	"my-go/internal/application"
 )
 
+func (a *App) togglePlaylistExpanded() {
+	if a == nil {
+		return
+	}
+	a.playlistExpanded = !a.playlistExpanded
+	if a.win != nil && !a.win.IsDestroyed() {
+		a.win.Invalidate()
+	}
+}
+
 func (a *App) chooseFiles() {
 	if a.win == nil {
 		return

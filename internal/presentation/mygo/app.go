@@ -113,6 +113,7 @@ type App struct {
 	windowReady bool
 	playlist    []string
 	playlistPos int
+	playlistExpanded bool
 	pendingPlaylistRemoval []string
 	status      string
 	state       domain.PlaybackState
@@ -153,6 +154,7 @@ func New(platform application.NativePlatform, playerFactory application.PlayerFa
 		historyRecords: make(map[string]domain.PlaybackProgress),
 		status:         "Starting Aurora Player...",
 		state:          domain.PlaybackState{Volume: 100},
+		playlistExpanded: true,
 	}
 	if len(filmstripGenerators) > 0 {
 		app.filmstripGenerator = filmstripGenerators[0]

@@ -109,6 +109,8 @@ type App struct {
 
 	path        string
 	startupFiles []string
+	startupFilesTimer *time.Timer
+	windowReady bool
 	playlist    []string
 	playlistPos int
 	pendingPlaylistRemoval []string
@@ -237,12 +239,8 @@ func (a *App) onReady() {
 		a.layoutVideo()
 		a.updateControllerBounds()
 		a.logDiagnostics("ready-to-show")
-		if len(a.startupFiles) > 0 {
-			startupFiles := a.startupFiles
-			a.startupFiles = nil
-			a.addFiles(startupFiles)
-			a.win.Invalidate()
-		}
+		a.windowReady = true
+		a.openQueuedFiles()
 	})
 	a.win.OnResize(func() {
 		a.videoLayoutFramePending = false

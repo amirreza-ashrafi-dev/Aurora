@@ -20,6 +20,11 @@ import (
 // Run is the composition root: it creates concrete adapters and injects them
 // into the MyGo presentation controller through application-owned ports.
 func Run() error {
+	// Only one Aurora instance should own playback. MyGo forwards later
+	// Explorer launches to the running instance.
+	if !mygo.App.RequestSingleInstanceLock() {
+		return nil
+	}
 	platform, err := winplatform.New()
 	if err != nil {
 		return fmt.Errorf("initialize Windows platform: %w", err)
@@ -56,7 +61,12 @@ func Run() error {
 	resourcesDir, _ := mygo.App.Path(mygo.PathResources)
 	filmstripGenerator := ffmpeg.NewFilmstripGenerator(resourcesDir)
 	app := mygopresentation.New(platform, playerFactory, progressRepository, subtitleRepository, subtitleRepository, filmstripGenerator)
-	app.SetStartupFiles(os.Args[1:])
+	mygo.App.OnOpenFile(func(path string) {
+		app.QueueOpenFile(path)
+	})
+	mygo.App.OnSecondInstance(func(_ []string, _ string) {
+		app.Activate()
+	})
 	defer app.Close()
 	if err := app.Run(); err != nil {
 		return fmt.Errorf("run Aurora Player: %w", err)
